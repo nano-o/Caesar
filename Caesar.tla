@@ -1,20 +1,33 @@
 ------------------------------- MODULE Caesar -------------------------------
 
-EXTENDS Naturals, FiniteSets
+EXTENDS Naturals, FiniteSets, TLC
 
-CONSTANTS N, C, MaxTs
+CONSTANTS N, C, MaxTime, Quorum
+
 
 ASSUME N \in Nat /\ N > 0
 
-TimeStamp == 1..MaxTs
-
 P ==  1..N
 
-VARIABLES time, seen, proposed, phase1Ack, phase1Reject
+ASSUME \A Q \in Quorum : Q \subseteq P
+ASSUME \A Q1,Q2 \in Quorum : Q1 \cap Q2 # {}
+
+(***************************************************************************)
+(* Majority quorums.                                                       *)
+(***************************************************************************)
+MajQuorums == {Q \in SUBSET P : Cardinality(Q) > Cardinality(P) \div 2}
+
+Time == 1..MaxTime
+
+TimeStamp == P \times Time 
+
+VARIABLES time, seen, proposed, phase1Ack, phase1Reject, stable
    
 Status == {"pending","stable","accepted","rejected"}
-    
-CmdWithTs == [cmd : C, ts : P \times TimeStamp]
+
+CmdInfo == [ts : TimeStamp, pred : SUBSET C]
+
+CmdInfoWithStat == [ts : TimeStamp, pred : SUBSET C, status: Status]
 
 ts1 \prec ts2 == 
     IF ts1[2] = ts2[2]
@@ -23,11 +36,16 @@ ts1 \prec ts2 ==
 
 TypeInvariant ==
     /\ time \in [P -> Nat]
-    /\ \E D \in SUBSET C : proposed \in [D -> P \times TimeStamp]
+    /\ \E D \in SUBSET C : proposed \in [D -> TimeStamp]
     /\ \forall p \in P :
-        /\ \E D \in SUBSET C : seen[p] \in [D -> [ts: P \times TimeStamp, status: Status, pred: SUBSET C]]
-        /\ \E D \in SUBSET C : phase1Ack[p] \in [D -> [ts : P \times TimeStamp, pred : SUBSET C]]
-        /\ \E D \in SUBSET C : phase1Reject[p] \in [D -> [ts : P \times TimeStamp, pred : SUBSET C]]
+        /\ \E D \in SUBSET C : seen[p] \in [D -> CmdInfoWithStat]
+        /\ \E D \in SUBSET C : phase1Ack[p] \in [D -> CmdInfo]
+        /\ \E D \in SUBSET C : phase1Reject[p] \in [D -> CmdInfo]
+    /\ \E D \in SUBSET C : stable \in [D -> [ts: TimeStamp, pred : SUBSET C]]
+
+
+Inv1 == \A c1,c2 \in DOMAIN stable : c1 # c2 /\ stable[c1].ts \prec stable[c2].ts =>
+    c1 \in stable[c2].pred /\ c2 \notin stable[c1].pred
 
 Init ==
     /\ time = [p \in P |-> 1]
@@ -35,14 +53,15 @@ Init ==
     /\ proposed = <<>>
     /\ phase1Ack = [p \in P |-> <<>>]
     /\ phase1Reject = [p \in P |-> <<>>]
+    /\ stable = <<>>
 
 Propose(p, c) == 
     /\ \forall c2 \in DOMAIN proposed : c2 # c \* no duplicate commands
     /\ proposed' = [c2 \in DOMAIN proposed \cup {c} |-> 
         IF c2 = c THEN <<p,time[p]>> ELSE proposed[c2]]
-    /\ time' = [time EXCEPT ![p] = @ + 1] \* increment the local time of p to avoid having two proposals with the same timestamp.
-    /\ time[p]' \in TimeStamp 
-    /\ UNCHANGED <<seen, phase1Ack, phase1Reject>>
+    /\ time' = [time EXCEPT ![p] = @ + 1] \* increment the local time of p to avoid having two proposals with the same Time.
+    /\ time[p]' \in Time 
+    /\ UNCHANGED <<seen, phase1Ack, phase1Reject, stable>>
 
 Conflicts(p, c1, c2) == \* c1 must be in seen[p] and c2 must be in proposed
     /\ proposed[c2] \prec seen[p][c1].ts
@@ -80,22 +99,38 @@ RcvPropose(p) == \E c \in DOMAIN proposed :
                         IF c2 = c THEN [ts |-> cTs, status |-> cStatus, pred |-> cDeps]
                         ELSE @[c2]]]
                 /\ UNCHANGED phase1Reject
-    /\ UNCHANGED <<proposed, time>>
+    /\ UNCHANGED <<proposed, time, stable>>
 
 Tick(p) == 
     /\ time' = [time EXCEPT ![p] = @+1]
-    /\ time[p]' \in TimeStamp
-    /\ UNCHANGED <<proposed, seen, phase1Ack, phase1Reject>>
+    /\ time[p]' \in Time
+    /\ UNCHANGED <<proposed, seen, phase1Ack, phase1Reject, stable>>
     
-Next == \E p \in P : 
-    \/  \E c \in C : Propose(p,c)
+Stable(c, p) ==
+    /\ c \in DOMAIN seen[p]
+    /\ c \notin DOMAIN stable \* TODO: a hack, remove
+    /\ \E q \in Quorum : 
+        /\ \A p2 \in q : c \in DOMAIN phase1Ack[p2]
+        /\  LET pred == UNION {phase1Ack[p2][c].pred : p2 \in q}
+                ts == proposed[c]
+            IN
+                /\ stable' = [c2 \in DOMAIN stable \union {c} |->
+                    IF c2 = c THEN [ts |-> ts, pred |-> pred]
+                    ELSE stable[c2]]
+                /\ seen' = [seen EXCEPT ![p] = [@ EXCEPT ![c] = 
+                    [@ EXCEPT !.status = "stable", !.ts = ts, !.pred = pred]]]
+    /\ UNCHANGED <<proposed, time, phase1Ack, phase1Reject>>
+    
+    
+Next == \E p \in P : \E c \in C : 
+    \/  Propose(p,c)
     \/  RcvPropose(p)
     \/  Tick(p)
-        
+    \/  Stable(c, p) 
     
 
 
 =============================================================================
 \* Modification History
-\* Last modified Mon Mar 07 12:53:27 EST 2016 by nano
+\* Last modified Mon Mar 07 13:37:48 EST 2016 by nano
 \* Created Mon Mar 07 11:08:24 EST 2016 by nano
