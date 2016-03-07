@@ -1,5 +1,11 @@
 ------------------------------- MODULE Caesar -------------------------------
 
+(***************************************************************************)
+(* It seems to me that we can express Caesar in the framework of the BA    *)
+(* using the same algorithm merging technique as for EPaxos.  Only phase 1 *)
+(* is a little different with the waiting.                                 *)
+(***************************************************************************)
+
 EXTENDS Naturals, FiniteSets, TLC
 
 CONSTANTS N, C, MaxTime, Quorum
@@ -105,10 +111,12 @@ Tick(p) ==
     /\ time' = [time EXCEPT ![p] = @+1]
     /\ time[p]' \in Time
     /\ UNCHANGED <<proposed, seen, phase1Ack, phase1Reject, stable>>
-    
-Stable(c, p) ==
-    /\ c \in DOMAIN seen[p]
-    /\ c \notin DOMAIN stable \* TODO: a hack, remove
+
+(***************************************************************************)
+(* Models the command leader sending a stable message for c.               *)
+(***************************************************************************)
+Stable(c) ==
+    /\ c \notin DOMAIN stable
     /\ \E q \in Quorum : 
         /\ \A p2 \in q : c \in DOMAIN phase1Ack[p2]
         /\  LET pred == UNION {phase1Ack[p2][c].pred : p2 \in q}
@@ -117,20 +125,31 @@ Stable(c, p) ==
                 /\ stable' = [c2 \in DOMAIN stable \union {c} |->
                     IF c2 = c THEN [ts |-> ts, pred |-> pred]
                     ELSE stable[c2]]
-                /\ seen' = [seen EXCEPT ![p] = [@ EXCEPT ![c] = 
-                    [@ EXCEPT !.status = "stable", !.ts = ts, !.pred = pred]]]
-    /\ UNCHANGED <<proposed, time, phase1Ack, phase1Reject>>
+    /\ UNCHANGED <<proposed, time, phase1Ack, phase1Reject, seen>>
+    
+    
+(***************************************************************************)
+(* Models a process receiving the stable message from the command leader.  *)
+(* Useless for now.                                                        *)
+(***************************************************************************)
+RcvStable(c, p) ==
+    /\ c \in DOMAIN seen[p]
+    /\ c \in DOMAIN stable
+    /\ seen' = [seen EXCEPT ![p] = [@ EXCEPT ![c] = 
+        [@ EXCEPT !.status = "stable", !.ts = stable[c].ts, !.pred = stable[c].pred]]]
+    /\ UNCHANGED <<proposed, time, phase1Ack, phase1Reject, stable>>
     
     
 Next == \E p \in P : \E c \in C : 
     \/  Propose(p,c)
     \/  RcvPropose(p)
     \/  Tick(p)
-    \/  Stable(c, p) 
+    \/  Stable(c)
+    \*\/  RcvStable(c,p) 
     
 
 
 =============================================================================
 \* Modification History
-\* Last modified Mon Mar 07 13:37:48 EST 2016 by nano
+\* Last modified Mon Mar 07 13:58:37 EST 2016 by nano
 \* Created Mon Mar 07 11:08:24 EST 2016 by nano
