@@ -97,6 +97,7 @@ Init ==
     /\ retryAck = [p \in P |-> <<>>]
 
 Propose(p, c) == 
+    /\ c \notin DOMAIN proposed
     /\ proposed' = proposed ++ <<c, <<p,time[p]>>>>
     /\ time' = [time EXCEPT ![p] = @ + 1] \* increment the local time of p to avoid having two proposals with the same Time.
     /\ time[p]' \in Time 
@@ -159,8 +160,14 @@ Retry(c, p) ==
     /\ \E q \in Quorum : 
         /\ \A p2 \in q : c \in DOMAIN phase1Ack[p2] \union DOMAIN phase1Reject[p2]
         /\ \E p2 \in q : c \in DOMAIN phase1Reject[p2] \* At least one node rejected the command.
-        /\  LET pred == DOMAIN estimate[p]
-                tsm == Max({info.ts : info \in Image(estimate[p])})
+        /\  LET acked == {p2 \in q : c \in DOMAIN phase1Ack[p2]}
+                rejected == {p2 \in q : c \in DOMAIN phase1Reject[p2]}
+                pred == DOMAIN estimate[p] 
+                            \union UNION {phase1Ack[p2][c].pred : p2 \in acked} 
+                            \union UNION {phase1Reject[p2][c].pred : p2 \in rejected}  
+                tsm == Max({info.ts : info \in Image(estimate[p])}
+                            \union {phase1Ack[p2][c].ts : p2 \in acked} 
+                            \union {phase1Reject[p2][c].ts : p2 \in rejected})
                 ts == <<p, tsm[2]+1>>
             IN  /\ ts \in TimeStamp
                 /\ retry' = retry ++ <<c, [ts |-> ts, pred |-> pred]>>
@@ -220,9 +227,12 @@ Next == \E p \in P : \E c \in C :
     \/  AckRetry(p)
     
 Inv1 == \A c1,c2 \in DOMAIN stable : c1 # c2 /\ stable[c1].ts \prec stable[c2].ts =>
+    c1 \in stable[c2].pred
+    
+Inv1Strong == \A c1,c2 \in DOMAIN stable : c1 # c2 /\ stable[c1].ts \prec stable[c2].ts =>
     c1 \in stable[c2].pred /\ c2 \notin stable[c1].pred
 
 =============================================================================
 \* Modification History
-\* Last modified Tue Mar 08 17:35:09 EST 2016 by nano
+\* Last modified Tue Mar 08 18:10:51 EST 2016 by nano
 \* Created Mon Mar 07 11:08:24 EST 2016 by nano
