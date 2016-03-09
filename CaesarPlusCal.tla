@@ -88,7 +88,8 @@ Max(xs) ==  CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
     }
 
   macro AckPropose(p) {
-        with (c \in DOMAIN proposed \ (DOMAIN phase1Ack[p] \union DOMAIN phase1Reject[p])) {
+        with (c \in DOMAIN proposed \ 
+                (DOMAIN phase1Ack[p] \union DOMAIN phase1Reject[p] \union DOMAIN estimate[p])) {
             when \neg Blocked(self, c);
             when \forall c2 \in DOMAIN estimate[p] : \neg Conflicts(p, c2, c); \* There is no conflict.
             with (  cStatus = "pending";
@@ -106,13 +107,14 @@ Max(xs) ==  CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
   }
   
     macro RejectPropose(p) { 
-        with (c \in DOMAIN proposed \ (DOMAIN phase1Ack[p] \union DOMAIN phase1Reject[p])) {
+        with (c \in DOMAIN proposed \ 
+                (DOMAIN phase1Ack[p] \union DOMAIN phase1Reject[p] \union DOMAIN estimate[p])) {
             when \neg Blocked(self, c);
             when \exists c2 \in DOMAIN estimate[p] : Conflicts(p, c2, c); \* There is a conflict.
-            with (  cStatus = "pending";
+            with (  cStatus = "rejected";
                     \* The timestamp with which c was initially proposed: 
-                    cTs = proposed[c]; 
-                    cDeps = {c2 \in DOMAIN estimate[p] : estimate[p][c2].ts \prec cTs}) {
+                    cTs = Max({info.ts : info \in Image(estimate[p])}); 
+                    cDeps = DOMAIN estimate[p] ) {
                 \* Notify the command leader of the reject:
                 phase1Reject := [phase1Reject EXCEPT ![p] = @  ++ <<c, [ts |-> cTs, pred |-> cDeps]>>];
                 \* Add the command to the local estimate:
@@ -130,6 +132,7 @@ Max(xs) ==  CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
     
     macro Retry(p) {
         with (c \in DOMAIN estimate[p] \ DOMAIN retry; q \in Quorum) {
+            when estimate[p][c].status \in {"pending","rejected"};
             when \A p2 \in q : c \in DOMAIN phase1Ack[p2] \union DOMAIN phase1Reject[p2];
             \* At least one node rejected the command:
             when \E p2 \in q : c \in DOMAIN phase1Reject[p2];
@@ -144,7 +147,7 @@ Max(xs) ==  CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
                     ts = <<p, tsm[2]+1>>) {
                 when ts \in TimeStamp;
                 retry := retry ++ <<c, [ts |-> ts, pred |-> pred]>>;
-                time := [time EXCEPT ![p] = NextTimeValue(p, ts)];
+                time := [time EXCEPT ![p] = ts[2]];
                 when time[p] \in Time;
             }
         }
@@ -152,8 +155,10 @@ Max(xs) ==  CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
     
     macro AckRetry(p) {
         with (c \in DOMAIN retry \ DOMAIN retryAck[p]) {
+            when c \in DOMAIN estimate[p] => estimate[p][c].status \in {"pending","rejected"};
             with (  ts =  retry[c].ts;
-                    pred = retry[c].pred ) {
+                    pred = retry[c].pred 
+                        \union {c2 \in DOMAIN estimate[p] : estimate[p][c2].ts \prec ts } ) {
                 estimate := [estimate EXCEPT ![p] = @ ++ 
                     <<c, [ts |-> ts, status |-> "accepted", pred |-> pred]>>];
                 retryAck := [retryAck EXCEPT ![p] = @ ++ <<c, [ts |-> ts, pred |-> pred]>>]
@@ -174,7 +179,7 @@ Max(xs) ==  CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
     macro StableAfterRetry(p) {
         with (c \in C \ DOMAIN stable, q \in Quorum) {
             when \A p2 \in q : c \in DOMAIN retryAck[p2];
-            with (  pred = CHOOSE pred \in {retryAck[p2][c].pred : p2 \in q} : TRUE;
+            with (  pred = UNION { retryAck[p2][c].pred : p2 \in q };
                     ts = CHOOSE ts \in {retryAck[p2][c].ts : p2 \in q} : TRUE ) {
                 stable := stable ++ <<c, [ts |-> ts, pred |-> pred]>>;
             }
@@ -188,7 +193,7 @@ Max(xs) ==  CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
         }
     }
     
-    process (p \in P) {
+    process (proc \in P) {
         eventLoop: while (TRUE) {
                 either { 
                     Propose(self) }
@@ -247,90 +252,110 @@ Init == (* Global variables *)
         /\ retry = <<>>
         /\ retryAck = [p \in P |-> <<>>]
 
-p(self) == \/ /\ \E c \in C \ DOMAIN proposed:
-                   /\ proposed' = proposed ++ <<c, <<self,time[self]>>>>
-                   /\ time' = [time EXCEPT ![self] = @ + 1]
-                   /\ time'[self] \in Time
-              /\ UNCHANGED <<estimate, phase1Ack, phase1Reject, stable, retry, retryAck>>
-           \/ /\ \E c \in DOMAIN proposed \ (DOMAIN phase1Ack[self] \union DOMAIN phase1Reject[self]):
-                   /\ \neg Blocked(self, c)
-                   /\ \forall c2 \in DOMAIN estimate[self] : \neg Conflicts(self, c2, c)
-                   /\ LET cStatus == "pending" IN
-                        LET cTs == proposed[c] IN
-                          LET cDeps == {c2 \in DOMAIN estimate[self] : estimate[self][c2].ts \prec cTs} IN
-                            /\ phase1Ack' = [phase1Ack EXCEPT ![self] = @ ++ <<c, [ts |-> cTs, pred |-> cDeps]>>]
-                            /\ estimate' = [estimate EXCEPT ![self] = @ ++ <<c, [ts |-> cTs, status |-> cStatus, pred |-> cDeps]>>]
-                            /\ time' = [time EXCEPT ![self] = NextTimeValue(self, cTs)]
-                            /\ time'[self] \in Time
-              /\ UNCHANGED <<proposed, phase1Reject, stable, retry, retryAck>>
-           \/ /\ \E c \in DOMAIN proposed \ (DOMAIN phase1Ack[self] \union DOMAIN phase1Reject[self]):
-                   /\ \neg Blocked(self, c)
-                   /\ \exists c2 \in DOMAIN estimate[self] : Conflicts(self, c2, c)
-                   /\ LET cStatus == "pending" IN
-                        LET cTs == proposed[c] IN
-                          LET cDeps == {c2 \in DOMAIN estimate[self] : estimate[self][c2].ts \prec cTs} IN
-                            /\ phase1Reject' = [phase1Reject EXCEPT ![self] = @  ++ <<c, [ts |-> cTs, pred |-> cDeps]>>]
-                            /\ estimate' = [estimate EXCEPT ![self] = @ ++ <<c, [ts |-> cTs, status |-> cStatus, pred |-> cDeps]>>]
-                            /\ time' = [time EXCEPT ![self] = NextTimeValue(self, cTs)]
-                            /\ time'[self] \in Time
-              /\ UNCHANGED <<proposed, phase1Ack, stable, retry, retryAck>>
-           \/ /\ time' = [time EXCEPT ![self] = @+1]
-              /\ time'[self] \in Time
-              /\ UNCHANGED <<estimate, proposed, phase1Ack, phase1Reject, stable, retry, retryAck>>
-           \/ /\ \E c \in DOMAIN estimate[self] \ DOMAIN retry:
-                   \E q \in Quorum:
-                     /\ \A p2 \in q : c \in DOMAIN phase1Ack[p2] \union DOMAIN phase1Reject[p2]
-                     /\ \E p2 \in q : c \in DOMAIN phase1Reject[p2]
-                     /\ LET acked == {p2 \in q : c \in DOMAIN phase1Ack[p2]} IN
-                          LET rejected == {p2 \in q : c \in DOMAIN phase1Reject[p2]} IN
-                            LET pred == DOMAIN estimate[self]
-                                             \union UNION {phase1Ack[p2][c].pred : p2 \in acked}
-                                             \union UNION {phase1Reject[p2][c].pred : p2 \in rejected} IN
-                              LET tsm == Max({info.ts : info \in Image(estimate[self])}
-                                               \union {phase1Ack[p2][c].ts : p2 \in acked}
-                                               \union {phase1Reject[p2][c].ts : p2 \in rejected}) IN
-                                LET ts == <<self, tsm[2]+1>> IN
-                                  /\ ts \in TimeStamp
-                                  /\ retry' = retry ++ <<c, [ts |-> ts, pred |-> pred]>>
-                                  /\ time' = [time EXCEPT ![self] = NextTimeValue(self, ts)]
-                                  /\ time'[self] \in Time
-              /\ UNCHANGED <<estimate, proposed, phase1Ack, phase1Reject, stable, retryAck>>
-           \/ /\ \E c \in DOMAIN retry \ DOMAIN retryAck[self]:
-                   LET ts == retry[c].ts IN
-                     LET pred == retry[c].pred IN
-                       /\ estimate' =         [estimate EXCEPT ![self] = @ ++
-                                      <<c, [ts |-> ts, status |-> "accepted", pred |-> pred]>>]
-                       /\ retryAck' = [retryAck EXCEPT ![self] = @ ++ <<c, [ts |-> ts, pred |-> pred]>>]
-              /\ UNCHANGED <<time, proposed, phase1Ack, phase1Reject, stable, retry>>
-           \/ /\ \E c \in C \ DOMAIN stable:
-                   \E q \in Quorum:
-                     /\ \A p2 \in q : c \in DOMAIN phase1Ack[p2]
-                     /\ LET pred == UNION {phase1Ack[p2][c].pred : p2 \in q} IN
-                          LET ts == proposed[c] IN
-                            stable' = stable ++ <<c, [ts |-> ts, pred |-> pred]>>
-              /\ UNCHANGED <<time, estimate, proposed, phase1Ack, phase1Reject, retry, retryAck>>
-           \/ /\ \E c \in C \ DOMAIN stable:
-                   \E q \in Quorum:
-                     /\ \A p2 \in q : c \in DOMAIN retryAck[p2]
-                     /\ LET pred == CHOOSE pred \in {retryAck[p2][c].pred : p2 \in q} : TRUE IN
-                          LET ts == CHOOSE ts \in {retryAck[p2][c].ts : p2 \in q} : TRUE IN
-                            stable' = stable ++ <<c, [ts |-> ts, pred |-> pred]>>
-              /\ UNCHANGED <<time, estimate, proposed, phase1Ack, phase1Reject, retry, retryAck>>
-           \/ /\ \E c \in DOMAIN stable:
-                   estimate' =         [estimate EXCEPT ![self] =
-                               @ ++ <<c, [status |-> "stable", ts |-> stable[c].ts, pred |-> stable[c].pred]>>]
-              /\ UNCHANGED <<time, proposed, phase1Ack, phase1Reject, stable, retry, retryAck>>
+proc(self) == \/ /\ \E c \in C \ DOMAIN proposed:
+                      /\ proposed' = proposed ++ <<c, <<self,time[self]>>>>
+                      /\ time' = [time EXCEPT ![self] = @ + 1]
+                      /\ time'[self] \in Time
+                 /\ UNCHANGED <<estimate, phase1Ack, phase1Reject, stable, retry, retryAck>>
+              \/ /\ \E c \in     DOMAIN proposed \
+                             (DOMAIN phase1Ack[self] \union DOMAIN phase1Reject[self] \union DOMAIN estimate[self]):
+                      /\ \neg Blocked(self, c)
+                      /\ \forall c2 \in DOMAIN estimate[self] : \neg Conflicts(self, c2, c)
+                      /\ LET cStatus == "pending" IN
+                           LET cTs == proposed[c] IN
+                             LET cDeps == {c2 \in DOMAIN estimate[self] : estimate[self][c2].ts \prec cTs} IN
+                               /\ phase1Ack' = [phase1Ack EXCEPT ![self] = @ ++ <<c, [ts |-> cTs, pred |-> cDeps]>>]
+                               /\ estimate' = [estimate EXCEPT ![self] = @ ++ <<c, [ts |-> cTs, status |-> cStatus, pred |-> cDeps]>>]
+                               /\ time' = [time EXCEPT ![self] = NextTimeValue(self, cTs)]
+                               /\ time'[self] \in Time
+                 /\ UNCHANGED <<proposed, phase1Reject, stable, retry, retryAck>>
+              \/ /\ \E c \in     DOMAIN proposed \
+                             (DOMAIN phase1Ack[self] \union DOMAIN phase1Reject[self] \union DOMAIN estimate[self]):
+                      /\ \neg Blocked(self, c)
+                      /\ \exists c2 \in DOMAIN estimate[self] : Conflicts(self, c2, c)
+                      /\ LET cStatus == "rejected" IN
+                           LET cTs == Max({info.ts : info \in Image(estimate[self])}) IN
+                             LET cDeps == DOMAIN estimate[self] IN
+                               /\ phase1Reject' = [phase1Reject EXCEPT ![self] = @  ++ <<c, [ts |-> cTs, pred |-> cDeps]>>]
+                               /\ estimate' = [estimate EXCEPT ![self] = @ ++ <<c, [ts |-> cTs, status |-> cStatus, pred |-> cDeps]>>]
+                               /\ time' = [time EXCEPT ![self] = NextTimeValue(self, cTs)]
+                               /\ time'[self] \in Time
+                 /\ UNCHANGED <<proposed, phase1Ack, stable, retry, retryAck>>
+              \/ /\ time' = [time EXCEPT ![self] = @+1]
+                 /\ time'[self] \in Time
+                 /\ UNCHANGED <<estimate, proposed, phase1Ack, phase1Reject, stable, retry, retryAck>>
+              \/ /\ \E c \in DOMAIN estimate[self] \ DOMAIN retry:
+                      \E q \in Quorum:
+                        /\ estimate[self][c].status \in {"pending","rejected"}
+                        /\ \A p2 \in q : c \in DOMAIN phase1Ack[p2] \union DOMAIN phase1Reject[p2]
+                        /\ \E p2 \in q : c \in DOMAIN phase1Reject[p2]
+                        /\ LET acked == {p2 \in q : c \in DOMAIN phase1Ack[p2]} IN
+                             LET rejected == {p2 \in q : c \in DOMAIN phase1Reject[p2]} IN
+                               LET pred == DOMAIN estimate[self]
+                                                \union UNION {phase1Ack[p2][c].pred : p2 \in acked}
+                                                \union UNION {phase1Reject[p2][c].pred : p2 \in rejected} IN
+                                 LET tsm == Max({info.ts : info \in Image(estimate[self])}
+                                                  \union {phase1Ack[p2][c].ts : p2 \in acked}
+                                                  \union {phase1Reject[p2][c].ts : p2 \in rejected}) IN
+                                   LET ts == <<self, tsm[2]+1>> IN
+                                     /\ ts \in TimeStamp
+                                     /\ retry' = retry ++ <<c, [ts |-> ts, pred |-> pred]>>
+                                     /\ time' = [time EXCEPT ![self] = ts[2]]
+                                     /\ time'[self] \in Time
+                 /\ UNCHANGED <<estimate, proposed, phase1Ack, phase1Reject, stable, retryAck>>
+              \/ /\ \E c \in DOMAIN retry \ DOMAIN retryAck[self]:
+                      /\ c \in DOMAIN estimate[self] => estimate[self][c].status \in {"pending","rejected"}
+                      /\ LET ts == retry[c].ts IN
+                           LET pred ==    retry[c].pred
+                                       \union {c2 \in DOMAIN estimate[self] : estimate[self][c2].ts \prec ts } IN
+                             /\ estimate' =         [estimate EXCEPT ![self] = @ ++
+                                            <<c, [ts |-> ts, status |-> "accepted", pred |-> pred]>>]
+                             /\ retryAck' = [retryAck EXCEPT ![self] = @ ++ <<c, [ts |-> ts, pred |-> pred]>>]
+                 /\ UNCHANGED <<time, proposed, phase1Ack, phase1Reject, stable, retry>>
+              \/ /\ \E c \in C \ DOMAIN stable:
+                      \E q \in Quorum:
+                        /\ \A p2 \in q : c \in DOMAIN phase1Ack[p2]
+                        /\ LET pred == UNION {phase1Ack[p2][c].pred : p2 \in q} IN
+                             LET ts == proposed[c] IN
+                               stable' = stable ++ <<c, [ts |-> ts, pred |-> pred]>>
+                 /\ UNCHANGED <<time, estimate, proposed, phase1Ack, phase1Reject, retry, retryAck>>
+              \/ /\ \E c \in C \ DOMAIN stable:
+                      \E q \in Quorum:
+                        /\ \A p2 \in q : c \in DOMAIN retryAck[p2]
+                        /\ LET pred == UNION { retryAck[p2][c].pred : p2 \in q } IN
+                             LET ts == CHOOSE ts \in {retryAck[p2][c].ts : p2 \in q} : TRUE IN
+                               stable' = stable ++ <<c, [ts |-> ts, pred |-> pred]>>
+                 /\ UNCHANGED <<time, estimate, proposed, phase1Ack, phase1Reject, retry, retryAck>>
+              \/ /\ \E c \in DOMAIN stable:
+                      estimate' =         [estimate EXCEPT ![self] =
+                                  @ ++ <<c, [status |-> "stable", ts |-> stable[c].ts, pred |-> stable[c].pred]>>]
+                 /\ UNCHANGED <<time, proposed, phase1Ack, phase1Reject, stable, retry, retryAck>>
 
-Next == (\E self \in P: p(self))
+Next == (\E self \in P: proc(self))
 
 Spec == Init /\ [][Next]_vars
 
 \* END TRANSLATION
-
+(***************************************************************************)
+(* An invariant describing the type of the different variables.  Note that *)
+(* we extensively use maps (also called functions) keyed by commands.  The *)
+(* set of keys of a map m is noted DOMAIN m.                               *)
+(***************************************************************************)
+TypeInvariant ==
+    /\ time \in [P -> Nat]
+    /\ \E D \in SUBSET C : proposed \in [D -> TimeStamp]
+    /\ \forall p \in P :
+        /\ \E D \in SUBSET C : estimate[p] \in [D -> CmdInfoWithStat]
+        /\ \E D \in SUBSET C : phase1Ack[p] \in [D -> CmdInfo]
+        /\ \E D \in SUBSET C : phase1Reject[p] \in [D -> CmdInfo]
+        /\ \E D \in SUBSET C : retryAck[p] \in [D -> CmdInfo]
+    /\ \E D \in SUBSET C : stable \in [D -> CmdInfo]
+    /\ \E D \in SUBSET C : retry \in [D -> CmdInfo]
+    
 Inv1 == \A c1,c2 \in DOMAIN stable : c1 # c2 /\ stable[c1].ts \prec stable[c2].ts =>
     c1 \in stable[c2].pred
 
 =============================================================================
 \* Modification History
-\* Last modified Wed Mar 09 10:10:35 EST 2016 by nano
+\* Last modified Wed Mar 09 12:06:20 EST 2016 by nano
 \* Created Wed Mar 09 08:50:42 EST 2016 by nano
