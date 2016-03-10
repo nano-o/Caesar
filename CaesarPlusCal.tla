@@ -158,8 +158,7 @@ Max(xs) ==  CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
         with (c \in DOMAIN retry \ DOMAIN retryAck[p]) {
             when c \in DOMAIN estimate[p] => estimate[p][c].status \in {"pending","rejected"};
             with (  ts =  retry[c].ts;
-                    pred = retry[c].pred 
-                        \union {c2 \in DOMAIN estimate[p] : estimate[p][c2].ts \prec ts } ) {
+                    pred = retry[c].pred \union {c2 \in DOMAIN estimate[p] : estimate[p][c2].ts \prec ts } ) {
                 estimate := [estimate EXCEPT ![p] = @ ++ 
                     <<c, [ts |-> ts, status |-> "accepted", pred |-> pred]>>];
                 retryAck := [retryAck EXCEPT ![p] = @ ++ <<c, [ts |-> ts, pred |-> pred]>>]
@@ -369,5 +368,5 @@ Inv1 == \A c1,c2 \in DOMAIN stable : c1 # c2 /\ stable[c1].ts \prec stable[c2].t
 
 =============================================================================
 \* Modification History
-\* Last modified Wed Mar 09 14:42:12 EST 2016 by nano
+\* Last modified Wed Mar 09 15:04:57 EST 2016 by nano
 \* Created Wed Mar 09 08:50:42 EST 2016 by nano
