@@ -55,7 +55,8 @@ Max(xs) ==  CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
         phase1Reject = [p \in P |-> <<>>],
         stable = <<>>,
         retry = <<>>,
-        retryAck = [p \in P |-> <<>>]
+        retryAck = [p \in P |-> <<>>],
+        disagree = {} \* A history variable
 
     define {
 
@@ -70,7 +71,24 @@ Max(xs) ==  CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
         Blocked(p, c) == \exists c2 \in DOMAIN estimate[p] : Blocks(p, c2, c)
         
         NextTimeValue(p, ts) == IF ts[2] > time[p] THEN ts[2] ELSE time[p]
-
+        
+        FastDecisionPossible(c, q) ==  
+            q \in FastQuorum /\ \A p \in q : c \in DOMAIN estimate[p] /\ estimate[p][c].status = "pending"
+    
+        RetryDecisionPossible(c, q) == 
+            q \in Quorum /\ \A p \in q : c \in DOMAIN estimate[p] /\ estimate[p][c].status = "accepted"
+            
+        Disagreement(c, q1, q2) == 
+            LET deps1 == UNION {phase1Ack[p2][c].pred : p2 \in q1}
+                deps2 == UNION {phase1Ack[p2][c].pred : p2 \in q2}
+            IN (deps1 \cup deps2) \ (deps1 \cap deps2)
+        
+        Disagree(c) ==
+            UNION {d \in SUBSET C : \E q1,q2 \in FastQuorum : 
+                /\  q1 \in {q \in FastQuorum : FastDecisionPossible(c, q)}
+                /\  q2 \in {q \in FastQuorum : FastDecisionPossible(c, q)}
+                /\  q1 # q2
+                /\  d = Disagreement(c, q1, q2) }
         }
  
     \* Models broadcasting a proposal.
@@ -82,6 +100,8 @@ Max(xs) ==  CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
         }
     }
 
+
+    
     \* Models replying to a proposal with an ACK message.   
     macro AckPropose(p) {
           with (c \in DOMAIN proposed \ 
@@ -97,7 +117,9 @@ Max(xs) ==  CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
                   \* Add the command to the local estimate:
                   estimate := [estimate EXCEPT ![p] = @ ++ <<c, [ts |-> cTs, status |-> cStatus, pred |-> cDeps]>>];
                   time := [time EXCEPT ![p] = NextTimeValue(p, cTs)];
-                  \* when time[p] \in Time;
+                  \* assert \A q1,q2 \in FastQuorum : q1 = q2 \/ \neg FastDecisionPossible(c, q1)' \/ \neg FastDecisionPossible(c, q2)';
+                  if (\E q1,q2 \in FastQuorum :  q1 # q2 /\ FastDecisionPossible(c, q1)' /\ FastDecisionPossible(c, q2)') 
+                    disagree := disagree \union {<<c2, c, proposed[c]>> : c2 \in Disagree(c)' }
               }
           }
     }
@@ -166,10 +188,12 @@ Max(xs) ==  CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
         }
     }
     
+    \* Note that sending stable messages in StableAfterPhase1 and StableAfterRetry is not needed to guarantee safety.
+    
     \* Models a command-leader receiving a quorum of responses to its proposal message in which 
     \* all processes accepted the proposal, and then broadcasting a "stable" message.
     macro StableAfterPhase1(p) {
-        with (c \in C \ (DOMAIN stable \union DOMAIN retry); q \in Quorum) {
+        with (c \in C \ (DOMAIN stable \union DOMAIN retry); q \in FastQuorum) {
             when \A p2 \in q : c \in DOMAIN phase1Ack[p2];
             with (  pred = UNION {phase1Ack[p2][c].pred : p2 \in q};
                     ts = proposed[c] ) {
@@ -215,7 +239,7 @@ Max(xs) ==  CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
                 or { 
                     StableAfterPhase1(self) } 
                 or { 
-                    StableAfterRetry(self) } 
+                     StableAfterRetry(self) } 
                 or { 
                     RcvStable(self) }
           }
@@ -226,7 +250,7 @@ Max(xs) ==  CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
 *) 
 \* BEGIN TRANSLATION
 VARIABLES time, estimate, proposed, phase1Ack, phase1Reject, stable, retry, 
-          retryAck
+          retryAck, disagree
 
 (* define statement *)
 Conflicts(p, c1, c2) ==
@@ -241,9 +265,27 @@ Blocked(p, c) == \exists c2 \in DOMAIN estimate[p] : Blocks(p, c2, c)
 
 NextTimeValue(p, ts) == IF ts[2] > time[p] THEN ts[2] ELSE time[p]
 
+FastDecisionPossible(c, q) ==
+    q \in FastQuorum /\ \A p \in q : c \in DOMAIN estimate[p] /\ estimate[p][c].status = "pending"
+
+RetryDecisionPossible(c, q) ==
+    q \in Quorum /\ \A p \in q : c \in DOMAIN estimate[p] /\ estimate[p][c].status = "accepted"
+
+Disagreement(c, q1, q2) ==
+    LET deps1 == UNION {phase1Ack[p2][c].pred : p2 \in q1}
+        deps2 == UNION {phase1Ack[p2][c].pred : p2 \in q2}
+    IN (deps1 \cup deps2) \ (deps1 \cap deps2)
+
+Disagree(c) ==
+    UNION {d \in SUBSET C : \E q1,q2 \in FastQuorum :
+        /\  q1 \in {q \in FastQuorum : FastDecisionPossible(c, q)}
+        /\  q2 \in {q \in FastQuorum : FastDecisionPossible(c, q)}
+        /\  q1 # q2
+        /\  d = Disagreement(c, q1, q2) }
+
 
 vars == << time, estimate, proposed, phase1Ack, phase1Reject, stable, retry, 
-           retryAck >>
+           retryAck, disagree >>
 
 ProcSet == (P)
 
@@ -256,12 +298,13 @@ Init == (* Global variables *)
         /\ stable = <<>>
         /\ retry = <<>>
         /\ retryAck = [p \in P |-> <<>>]
+        /\ disagree = {}
 
 proc(self) == \/ /\ \E c \in C \ DOMAIN proposed:
                       /\ proposed' = proposed ++ <<c, <<self,time[self]>>>>
                       /\ time' = [time EXCEPT ![self] = @ + 1]
-                      /\ time'[self] \in Time
-                 /\ UNCHANGED <<estimate, phase1Ack, phase1Reject, stable, retry, retryAck>>
+                      /\ time'[self] \in 1..MaxTime
+                 /\ UNCHANGED <<estimate, phase1Ack, phase1Reject, stable, retry, retryAck, disagree>>
               \/ /\ \E c \in     DOMAIN proposed \
                              (DOMAIN phase1Ack[self] \union DOMAIN phase1Reject[self] \union DOMAIN estimate[self]):
                       /\ \neg Blocked(self, c)
@@ -272,6 +315,10 @@ proc(self) == \/ /\ \E c \in C \ DOMAIN proposed:
                                /\ phase1Ack' = [phase1Ack EXCEPT ![self] = @ ++ <<c, [ts |-> cTs, pred |-> cDeps]>>]
                                /\ estimate' = [estimate EXCEPT ![self] = @ ++ <<c, [ts |-> cTs, status |-> cStatus, pred |-> cDeps]>>]
                                /\ time' = [time EXCEPT ![self] = NextTimeValue(self, cTs)]
+                               /\ IF \E q1,q2 \in FastQuorum :  q1 # q2 /\ FastDecisionPossible(c, q1)' /\ FastDecisionPossible(c, q2)'
+                                     THEN /\ disagree' = (disagree \union {<<c2, c, proposed[c]>> : c2 \in Disagree(c)' })
+                                     ELSE /\ TRUE
+                                          /\ UNCHANGED disagree
                  /\ UNCHANGED <<proposed, phase1Reject, stable, retry, retryAck>>
               \/ /\ \E c \in     DOMAIN proposed \
                              (DOMAIN phase1Ack[self] \union DOMAIN phase1Reject[self] \union DOMAIN estimate[self]):
@@ -283,10 +330,10 @@ proc(self) == \/ /\ \E c \in C \ DOMAIN proposed:
                                /\ phase1Reject' = [phase1Reject EXCEPT ![self] = @  ++ <<c, [ts |-> cTs, pred |-> cDeps]>>]
                                /\ estimate' = [estimate EXCEPT ![self] = @ ++ <<c, [ts |-> cTs, status |-> cStatus, pred |-> cDeps]>>]
                                /\ time' = [time EXCEPT ![self] = NextTimeValue(self, cTs)]
-                 /\ UNCHANGED <<proposed, phase1Ack, stable, retry, retryAck>>
+                 /\ UNCHANGED <<proposed, phase1Ack, stable, retry, retryAck, disagree>>
               \/ /\ time' = [time EXCEPT ![self] = @+1]
-                 /\ time'[self] \in Time
-                 /\ UNCHANGED <<estimate, proposed, phase1Ack, phase1Reject, stable, retry, retryAck>>
+                 /\ time'[self] \in 1..MaxTime
+                 /\ UNCHANGED <<estimate, proposed, phase1Ack, phase1Reject, stable, retry, retryAck, disagree>>
               \/ /\ \E c \in DOMAIN estimate[self] \ (DOMAIN retry \union DOMAIN stable):
                       \E q \in Quorum:
                         /\ estimate[self][c].status \in {"pending","rejected"}
@@ -303,34 +350,33 @@ proc(self) == \/ /\ \E c \in C \ DOMAIN proposed:
                                    LET ts == <<self, tsm[2]+1>> IN
                                      /\ retry' = retry ++ <<c, [ts |-> ts, pred |-> pred]>>
                                      /\ time' = [time EXCEPT ![self] = ts[2]]
-                 /\ UNCHANGED <<estimate, proposed, phase1Ack, phase1Reject, stable, retryAck>>
+                 /\ UNCHANGED <<estimate, proposed, phase1Ack, phase1Reject, stable, retryAck, disagree>>
               \/ /\ \E c \in DOMAIN retry \ DOMAIN retryAck[self]:
                       /\ c \in DOMAIN estimate[self] => estimate[self][c].status \in {"pending","rejected"}
                       /\ LET ts == retry[c].ts IN
-                           LET pred ==    retry[c].pred
-                                       \union {c2 \in DOMAIN estimate[self] : estimate[self][c2].ts \prec ts } IN
+                           LET pred == retry[c].pred \union {c2 \in DOMAIN estimate[self] : estimate[self][c2].ts \prec ts } IN
                              /\ estimate' =         [estimate EXCEPT ![self] = @ ++
                                             <<c, [ts |-> ts, status |-> "accepted", pred |-> pred]>>]
                              /\ retryAck' = [retryAck EXCEPT ![self] = @ ++ <<c, [ts |-> ts, pred |-> pred]>>]
-                 /\ UNCHANGED <<time, proposed, phase1Ack, phase1Reject, stable, retry>>
+                 /\ UNCHANGED <<time, proposed, phase1Ack, phase1Reject, stable, retry, disagree>>
               \/ /\ \E c \in C \ (DOMAIN stable \union DOMAIN retry):
-                      \E q \in Quorum:
+                      \E q \in FastQuorum:
                         /\ \A p2 \in q : c \in DOMAIN phase1Ack[p2]
                         /\ LET pred == UNION {phase1Ack[p2][c].pred : p2 \in q} IN
                              LET ts == proposed[c] IN
                                stable' = stable ++ <<c, [ts |-> ts, pred |-> pred]>>
-                 /\ UNCHANGED <<time, estimate, proposed, phase1Ack, phase1Reject, retry, retryAck>>
+                 /\ UNCHANGED <<time, estimate, proposed, phase1Ack, phase1Reject, retry, retryAck, disagree>>
               \/ /\ \E c \in C \ DOMAIN stable:
                       \E q \in Quorum:
                         /\ \A p2 \in q : c \in DOMAIN retryAck[p2]
                         /\ LET pred == UNION { retryAck[p2][c].pred : p2 \in q } IN
                              LET ts == CHOOSE ts \in {retryAck[p2][c].ts : p2 \in q} : TRUE IN
                                stable' = stable ++ <<c, [ts |-> ts, pred |-> pred]>>
-                 /\ UNCHANGED <<time, estimate, proposed, phase1Ack, phase1Reject, retry, retryAck>>
+                 /\ UNCHANGED <<time, estimate, proposed, phase1Ack, phase1Reject, retry, retryAck, disagree>>
               \/ /\ \E c \in DOMAIN stable:
                       estimate' =         [estimate EXCEPT ![self] =
                                   @ ++ <<c, [status |-> "stable", ts |-> stable[c].ts, pred |-> stable[c].pred]>>]
-                 /\ UNCHANGED <<time, proposed, phase1Ack, phase1Reject, stable, retry, retryAck>>
+                 /\ UNCHANGED <<time, proposed, phase1Ack, phase1Reject, stable, retry, retryAck, disagree>>
 
 Next == (\E self \in P: proc(self))
 
@@ -360,13 +406,56 @@ TypeInvariant ==
         /\ \E D \in SUBSET C : retryAck[p] \in [D -> CmdInfo]
     /\ \E D \in SUBSET C : stable \in [D -> CmdInfo]
     /\ \E D \in SUBSET C : retry \in [D -> CmdInfo]
+    /\ disagree \subseteq (DOMAIN proposed) \times (DOMAIN proposed) \times (1..MaxTime)
     
 Inv1 == \A c1,c2 \in DOMAIN stable : c1 # c2 /\ stable[c1].ts \prec stable[c2].ts =>
     c1 \in stable[c2].pred
     
-(* Model-checked: 70M states, diameter 33, 3 nodes, 3 commands, MaxTime=2; 33 minutes on whitewhale *)
+
+RemoveHigherTs(ts, pred) == {c \in pred : stable[c].ts < ts}
+
+(***************************************************************************)
+(* An intuition: even if two different quorums q1 and q2 have different    *)
+(* dependency sets for c, removing the commands that will be commited with *)
+(* a higher ts yields the same dep set.                                    *)
+(*                                                                         *)
+(* If c2 is a disagreement point between two fast quorums q1 and q2 for    *)
+(* which c1 is pending, then less than a maj has seen c2.  Moreover, if    *)
+(* c2.ts < c1.ts, then c2 will be rejected, and thus commited with a       *)
+(* higher ts than c1, and thus is no real disagreement between q1 and q2.  *)
+(*                                                                         *)
+(* If c2 is a disagreement point between two classic quorums q1 and q2 for *)
+(* which c1 is accepted (i.e.  after a retry), then c2.ts < c1.ts (by the  *)
+(* retryAck action) and c2 has been seen by less than a quorum.  Thus \neg *)
+(* FastDecisionPossible(c2).  c2.ts < c1.ts implies that c2 was not seen   *)
+(* be the fast quorum that caused c1's retry.  c2 will be rejected         *)
+(* anywhere and is thus not a real disagreement betwee q1 and q2.          *)
+(*                                                                         *)
+(* So any two quorums, on the fast or slow path, will yield the same final *)
+(* dependency set.  Therefore we can use the structure of Paxos.           *)
+(*                                                                         *)
+(* Another invariant: if c1 is accepted, then any other command accepted   *)
+(* or stable with a higher timestamp has c1 in its pred (Inv3).            *)
+(***************************************************************************)
+
+(* Cannot be checked by TLC... *)
+Prop1 == []( 
+    \A c \in DOMAIN proposed : \A q1,q2 \in FastQuorum :
+        q1 # q2 /\ FastDecisionPossible(c,q1) /\ FastDecisionPossible(c,q2) =>
+            LET deps1 == UNION {phase1Ack[p][c].deps : p \in q1}
+                deps2 == UNION {phase1Ack[p][c].deps : p \in q2}
+                d == (deps1 \cup deps2) \ (deps1 \cap deps2)
+            IN \A c2 \in d : [](c2 \in DOMAIN stable => proposed[c].ts \prec stable[c2].ts) )
+
+Inv2 == \A x \in disagree : x[1] \in DOMAIN stable => x[3] \prec stable[x[1]].ts 
+
+Inv3 == \A c \in DOMAIN retry : 
+     /\ \A c2 \in DOMAIN proposed : \E q \in FastQuorum : FastDecisionPossible(c2, q) => 
+            \A a \in q : retry[c].ts \prec phase1Ack[a][c2].ts => c \in phase1Ack[a][c2].pred 
+     /\ \A c2 \in DOMAIN retry :  retry[c].ts \prec retry[c2].ts => c \in retry[c2].pred
+
 
 =============================================================================
 \* Modification History
-\* Last modified Wed Mar 09 15:04:57 EST 2016 by nano
+\* Last modified Fri Mar 11 16:18:38 EST 2016 by nano
 \* Created Wed Mar 09 08:50:42 EST 2016 by nano
