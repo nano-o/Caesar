@@ -1,6 +1,6 @@
 ------------------------------ MODULE Caesar2 ------------------------------
 
-EXTENDS Naturals, FiniteSets, TLC
+EXTENDS Naturals, FiniteSets, TLC, Sequences
 
 (***************************************************************************)
 (* Adding a key-value mapping (kv[1] is the key, kv[2] the value) to a map *)
@@ -87,6 +87,8 @@ GT(c, xs) ==
             IN GT(c, ts)
         
         CmdsWithLowerT(p, c, t) == {c2 \in DOMAIN estimate[p] : <<c2, estimate[p][c2].ts>> \prec <<c,t>>}
+        
+        RecoveryStatus == {"recovery-pending", "recovery-rejected", "recovery-stable", "recovery-accepted", "recovery-notseen"}
         
         }
  
@@ -188,12 +190,19 @@ GT(c, xs) ==
     macro JoinBallot(p) {
         with (l \in recover; c = l[1], b = l[2]) {
             ballot := [ballot EXCEPT ![p] = [@ EXCEPT ![c] = b]];
-            if (c \in DOMAIN estimate[p]) 
-                estimate := [estimate EXCEPT ![p] = [@ EXCEPT ![c] = [@ EXCEPT !.status = "recovery-seen"]]];
+            if (c \in DOMAIN estimate[p] /\ estimate[p][c].status \notin RecoveryStatus) 
+                estimate := [estimate EXCEPT ![p] = [@ EXCEPT ![c] = [@ EXCEPT !.status = "recovery-" \o estimate[p][c].status]]];
             else 
                 estimate := [estimate EXCEPT ![p] = @ ++ <<c, [ts |-> 0, pred |-> {}, status |-> "recovery-notseen"]>>];
         }
     }
+    
+    (*
+    macro  RecoverStable(c, b) {
+        with (q \in Quorum) {
+            when \A p2 \in q : ballot[p2][c] = b /\ c \in DOMAIN estimate[p2] /\ estimate[p2][c].status = "recovery-seen"
+        }
+    } *)
   
     process (leader \in C \times Ballot) {
         ldr:    while (TRUE) {
@@ -235,7 +244,7 @@ GT(c, xs) ==
 
 *) 
 \* BEGIN TRANSLATION
-\* Label acc of process acc at line 219 col 17 changed to acc_
+\* Label acc of process acc at line 228 col 17 changed to acc_
 VARIABLES ballot, estimate, propose, stable, retry, recover
 
 (* define statement *)
@@ -255,6 +264,8 @@ GTReceived(p, c) ==
     IN GT(c, ts)
 
 CmdsWithLowerT(p, c, t) == {c2 \in DOMAIN estimate[p] : <<c2, estimate[p][c2].ts>> \prec <<c,t>>}
+
+RecoveryStatus == {"recovery-pending", "recovery-rejected", "recovery-stable", "recovery-accepted", "recovery-notseen"}
 
 
 vars == << ballot, estimate, propose, stable, retry, recover >>
@@ -338,8 +349,8 @@ acc(self) == /\ \/ /\ \E c \in C:
                         LET c == l[1] IN
                           LET b == l[2] IN
                             /\ ballot' = [ballot EXCEPT ![self] = [@ EXCEPT ![c] = b]]
-                            /\ IF c \in DOMAIN estimate[self]
-                                  THEN /\ estimate' = [estimate EXCEPT ![self] = [@ EXCEPT ![c] = [@ EXCEPT !.status = "recovery-seen"]]]
+                            /\ IF c \in DOMAIN estimate[self] /\ estimate[self][c].status \notin RecoveryStatus
+                                  THEN /\ estimate' = [estimate EXCEPT ![self] = [@ EXCEPT ![c] = [@ EXCEPT !.status = "recovery-" \o estimate[self][c].status]]]
                                   ELSE /\ estimate' = [estimate EXCEPT ![self] = @ ++ <<c, [ts |-> 0, pred |-> {}, status |-> "recovery-notseen"]>>]
              /\ UNCHANGED << propose, stable, retry, recover >>
 
@@ -352,7 +363,7 @@ Spec == Init /\ [][Next]_vars
 
 TimeStamp == P \times Time 
    
-Status == {"pending","stable","accepted","rejected","recovery-seen", "recovery-notseen"}
+Status == {"pending", "stable", "accepted", "rejected"} \cup RecoveryStatus
 
 CmdInfo == [ts : Nat, pred : SUBSET C]
 CmdInfoWithStat == [ts : Nat, pred : SUBSET C, status: Status]
@@ -375,5 +386,5 @@ Agreement == \A c1,c2 \in DOMAIN stable : c1 # c2 /\ <<c1, stable[c1].ts>> \prec
 
 =============================================================================
 \* Modification History
-\* Last modified Fri Mar 18 18:35:39 EDT 2016 by nano
+\* Last modified Fri Mar 18 18:53:03 EDT 2016 by nano
 \* Created Thu Mar 17 21:48:45 EDT 2016 by nano
