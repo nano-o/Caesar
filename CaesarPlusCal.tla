@@ -160,7 +160,7 @@ Max(xs) ==  CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
             when \E p2 \in q : c \in DOMAIN phase1Reject[p2];
             with (  acked = {p2 \in q : c \in DOMAIN phase1Ack[p2]};
                     rejected = {p2 \in q : c \in DOMAIN phase1Reject[p2]};
-                    pred = DOMAIN estimate[p] 
+                    pred = DOMAIN estimate[p]
                                 \union UNION {phase1Ack[p2][c].pred : p2 \in acked} 
                                 \union UNION {phase1Reject[p2][c].pred : p2 \in rejected};
                     tsm = Max({info.ts : info \in Image(estimate[p])}
@@ -420,9 +420,10 @@ RemoveHigherTs(ts, pred) == {c \in pred : stable[c].ts < ts}
 (* a higher ts yields the same dep set.                                    *)
 (*                                                                         *)
 (* If c2 is a disagreement point between two fast quorums q1 and q2 for    *)
-(* which c1 is pending, then less than a maj has seen c2.  Moreover, if    *)
-(* c2.ts < c1.ts, then c2 will be rejected, and thus commited with a       *)
-(* higher ts than c1, and thus is no real disagreement between q1 and q2.  *)
+(* which c1 is pending, then less than a maj has seen c2 before c1 (eq., a *)
+(* maj has seen c1 before c2).  Moreover, if c2.ts < c1.ts, then c2 will   *)
+(* be rejected, and thus commited with a higher ts than c1, and thus is no *)
+(* real disagreement between q1 and q2.                                    *)
 (*                                                                         *)
 (* If c2 is a disagreement point between two classic quorums q1 and q2 for *)
 (* which c1 is accepted (i.e.  after a retry), then c2.ts < c1.ts (by the  *)
@@ -433,6 +434,9 @@ RemoveHigherTs(ts, pred) == {c \in pred : stable[c].ts < ts}
 (*                                                                         *)
 (* So any two quorums, on the fast or slow path, will yield the same final *)
 (* dependency set.  Therefore we can use the structure of Paxos.           *)
+(*                                                                         *)
+(* Now we have to ensure that for any two conflicting commands c1 and c2,  *)
+(* c1 depends on c2 or vice versa.                                         *)
 (*                                                                         *)
 (* Another invariant: if c1 is accepted, then any other command accepted   *)
 (* or stable with a higher timestamp has c1 in its pred (Inv3).            *)
@@ -457,5 +461,5 @@ Inv3 == \A c \in DOMAIN retry :
 
 =============================================================================
 \* Modification History
-\* Last modified Fri Mar 11 16:18:38 EST 2016 by nano
+\* Last modified Thu Mar 17 09:31:52 EDT 2016 by nano
 \* Created Wed Mar 09 08:50:42 EST 2016 by nano
