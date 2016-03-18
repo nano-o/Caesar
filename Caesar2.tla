@@ -21,6 +21,8 @@ ASSUME N \in Nat /\ N > 0
 
 P ==  1..N 
 
+Time == 1..MaxTime
+
 ASSUME MaxBallot \in Nat /\ MaxBallot >= 1
 
 Ballot == 1..MaxBallot
@@ -35,7 +37,6 @@ ASSUME \A Q1,Q2 \in FastQuorum : \A Q3 \in Quorum : Q1 \cap Q2 \cap Q3 # {}
 MajQuorums == {Q \in SUBSET P : 2 * Cardinality(Q) > Cardinality(P)}
 ThreeFourthQuorums == {Q \in SUBSET P : 4 * Cardinality(Q) > 3 * Cardinality(P)}
 
-Time == Nat
 
 (***************************************************************************)
 (* An ordering relation among pairs of the form <<pid, timestamp>>         *)
@@ -47,16 +48,11 @@ ts1 \prec ts2 ==
 
 Max(xs) ==  CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
     
-(***************************************************************************)
-(* Let's make sure that a command cannot be proposed twice.                *)
-(***************************************************************************)
-
 (***********
 
 --algorithm Caesar {
 
     variables
-        seen = [p \in P |-> {}],
         ballot = [p \in P |-> [c \in C |-> 1]], \* map an acceptor p to a command c to a ballot b, indicating that the acceptor p is in ballot b for command c.
         estimate = [p \in P |-> [c \in C |-> <<>>]], \* the estimate of acceptor p for command c in ballot ballot[p][c].
         propose = <<>>, \* maps a pair <<c,b>> to a timestamp t, indicating that the proposal for command c in ballot b is timestamp t.
@@ -64,10 +60,11 @@ Max(xs) ==  CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
         retry = <<>>, \* maps a pair <<c,b>> to a set of dependencies ds and a timestamp t, indicating that c is to be retried with timestamp t and dependencies ds. 
 
     define {
-
-        Conflicts(p, b, c1, c2) == \* c1 must be in estimate[p] and c2 must be in proposed for this definition to make sense
-            /\ propose[c2] \prec estimate[p][c1][b].ts
-            /\ c2 \notin estimate[p][c1][b].pred
+        (*
+        \* Used for replying to a proposal.
+        Conflicts(p, c1, t1, c2) ==
+            /\ t1 \prec estimate[p][c2].ts
+            /\ c1 \notin estimate[p][c2].pred
         
         Blocks(p, b, c1, c2) == \* c1 must be in estimate[p] and c2 must be in proposed for this definition to make sense
             /\ Conflicts(p,b,c1,c2)
@@ -86,22 +83,16 @@ Max(xs) ==  CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
                 /\ estimate[p][c][b].status = "accepted"
         
         \* c has been proposed by some process in ballot b.
-        Proposed(c, b) == \E p \in P : c \in DOMAIN propose[p] => b \in DOMAIN propose[p][c]
+        Proposed(c, b) == \E p \in P : c \in DOMAIN propose[p] => b \in DOMAIN propose[p][c]*)
         
         }
  
-    \* Models broadcasting a proposal.
-    macro Propose(p, b) {
-        with (c \in C) {
-            \* nobody proposed it before in this ballot:
-            when \neg Proposed(c, b);
-            \* first we have to ask the others to join our ballot...
-            \* In fact in the first phase we are asking the others to allocate an instantiation for the command.
-            \* A command is associated with a ballot (<<p,1>>) and a timestamp (<<p,time[p]>>).
-            propose :=  [propose EXCEPT ![p] = @ ++ <<c, @[c] ++ <<1, <<p,time[p]>> >> >>]; \* Broadcast proposal, logically staring the consensus instance for c.
-            ballot := [ballot EXCEPT ![p] = @ ++ <<c, 1 >>];
-            time := [time EXCEPT ![p] = @ + 1];
-            when time[p] \in 1..MaxTime;
+    \* Models making a proposal in a ballot.
+    macro Propose(c, b) {
+        \* has not been proposed before in this ballot:
+        when \neg <<c,b>> \in DOMAIN propose;
+        with (t \in Time) {
+            propose := propose ++ <<<<c,b>>, t>>
         }
     }
 
@@ -221,82 +212,34 @@ Max(xs) ==  CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
         }
     }
     
-    process (proc \in P) {
-        eventLoop: while (TRUE) {
-                \* either { 
-                    Propose(self, 1) \* }
-                (* or { 
-                    AckPropose(self) } 
-                or { 
-                    RejectPropose(self) } 
-                or { 
-                    Tick(self) } 
-                or { 
-                    Retry(self) } 
-                or { 
-                    AckRetry(self) } 
-                or { 
-                    StableAfterPhase1(self) } 
-                or { 
-                     StableAfterRetry(self) } 
-                or { 
-                    RcvStable(self) } *)
-          }
-      }
-    } 
+    process (leader \in C \times Ballot) {
+        ldr:    while (TRUE) {
+                    Propose(self[1], self[2]) }
+    }
+    
 }
 
 *) 
 \* BEGIN TRANSLATION
-VARIABLES time, seen, ballot, estimate, propose, stable, retry
+VARIABLES ballot, estimate, propose, stable, retry
 
-(* define statement *)
-Conflicts(p, b, c1, c2) ==
-    /\ proposed[c2] \prec estimate[p][c1][b].ts
-    /\ c2 \notin estimate[p][c1][b].pred
+vars == << ballot, estimate, propose, stable, retry >>
 
-Blocks(p, b, c1, c2) ==
-    /\ Conflicts(p,b,c1,c2)
-    /\ estimate[p][c1][b].status \notin {"stable","accepted"}
-
-Blocked(p, b, c) == \exists c2 \in DOMAIN estimate[p] : Blocks(p, b, c2, c)
-
-NextTimeValue(p, ts) == IF ts[2] > time[p] THEN ts[2] ELSE time[p]
-
-FastDecisionPossible(c, b, q) ==
-    q \in FastQuorum /\ \A p \in q : c \in DOMAIN estimate[p]
-        /\ b \in DOMAIN estimate[p][c] /\ estimate[p][c][b].status = "pending"
-
-RetryDecisionPossible(c, b, q) ==
-    q \in Quorum /\ \A p \in q : c \in DOMAIN estimate[p] /\ b \in DOMAIN estimate[p][c]
-        /\ estimate[p][c][b].status = "accepted"
-
-
-Proposed(c, b) == \E p \in P : c \in DOMAIN propose[p] => b \in DOMAIN propose[p][c]
-
-
-vars == << time, seen, ballot, estimate, propose, stable, retry >>
-
-ProcSet == (P)
+ProcSet == (C \times Ballot)
 
 Init == (* Global variables *)
-        /\ time = [p \in P |-> 1]
-        /\ seen = [p \in P |-> {}]
-        /\ ballot = [p \in P |-> <<>>]
-        /\ estimate = [p \in P |-> <<>>]
-        /\ propose = [p \in P |-> <<>>]
-        /\ stable = [p \in P |-> <<>>]
-        /\ retry = [p \in P |-> <<>>]
+        /\ ballot = [p \in P |-> [c \in C |-> 1]]
+        /\ estimate = [p \in P |-> [c \in C |-> <<>>]]
+        /\ propose = <<>>
+        /\ stable = <<>>
+        /\ retry = <<>>
 
-proc(self) == /\ \E c \in C:
-                   /\ \neg Proposed(c, 1)
-                   /\ propose' = [propose EXCEPT ![self] = @ ++ <<c, @[c] ++ <<1, <<self,time[self]>> >> >>]
-                   /\ ballot' = [ballot EXCEPT ![self] = @ ++ <<c, 1 >>]
-                   /\ time' = [time EXCEPT ![self] = @ + 1]
-                   /\ time'[self] \in 1..MaxTime
-              /\ UNCHANGED << seen, estimate, stable, retry >>
+leader(self) == /\ \neg <<(self[1]),(self[2])>> \in DOMAIN propose
+                /\ \E t \in Time:
+                     propose' = propose ++ <<<<(self[1]),(self[2])>>, t>>
+                /\ UNCHANGED << ballot, estimate, stable, retry >>
 
-Next == (\E self \in P: proc(self))
+Next == (\E self \in C \times Ballot: leader(self))
 
 Spec == Init /\ [][Next]_vars
 
@@ -306,8 +249,8 @@ TimeStamp == P \times Time
    
 Status == {"pending","stable","accepted","rejected"}
 
-CmdInfo == [ts : TimeStamp, pred : SUBSET C]
-CmdInfoWithStat == [ts : TimeStamp, pred : SUBSET C, status: Status]
+CmdInfo == [ts : Time, pred : SUBSET C]
+CmdInfoWithStat == [ts : Time, pred : SUBSET C, status: Status]
 
 (***************************************************************************)
 (* An invariant describing the type of the different variables.  Note that *)
@@ -315,15 +258,11 @@ CmdInfoWithStat == [ts : TimeStamp, pred : SUBSET C, status: Status]
 (* set of keys of a map m is noted DOMAIN m.                               *)
 (***************************************************************************)
 TypeInvariant ==
-    /\ time \in [P -> Nat]
-    /\ \E D \in SUBSET C : \E bs \in [D -> SUBSET Ballot] : 
-            /\  DOMAIN propose = D 
-            /\  \A c \in D : propose[c] \in [bs[c] -> TimeStamp]
-    /\ ballot \in [P -> [C -> Ballot]]
-    /\ \forall p \in P :
-        /\ \E D \in SUBSET C : \E bs \in [D -> SUBSET Ballot] : 
-                /\  DOMAIN estimate[p] = D
-                /\  \A c \in D : estimate[p][c] \in [bs[c] -> CmdInfoWithStat]
+    /\  \A p \in P, c \in C : ballot[p][c] \in Ballot
+    /\  \A p \in P, c \in C : estimate[p][c] \in CmdInfoWithStat \union {<<>>}
+    /\  \E D \in SUBSET (C \times Ballot) : propose \in [D -> Time]
+    /\  \E D \in SUBSET C : stable \in [D -> CmdInfo]
+    /\  \E D \in SUBSET (C \times Ballot) : retry \in [D -> CmdInfo]
     
 
 RemoveHigherTs(ts, pred) == {c \in pred : stable[c].ts < ts}
@@ -360,5 +299,5 @@ RemoveHigherTs(ts, pred) == {c \in pred : stable[c].ts < ts}
 
 =============================================================================
 \* Modification History
-\* Last modified Fri Mar 18 10:07:31 EDT 2016 by nano
+\* Last modified Fri Mar 18 10:25:43 EDT 2016 by nano
 \* Created Thu Mar 17 21:48:45 EDT 2016 by nano
