@@ -50,7 +50,9 @@ ts1 \prec ts2 ==
     THEN ts1[1] < ts2[1]
     ELSE ts1[2] < ts2[2] 
 
-Max(xs) ==  CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
+GT(c, xs) ==  
+    LET max == CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
+    IN IF max[1] < c THEN <<c, max[2]>> ELSE <<c, max[2]+1>> 
     
 (***********
 
@@ -58,7 +60,7 @@ Max(xs) ==  CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
 
     variables
         ballot = [p \in P |-> [c \in C |-> 0]], \* map an acceptor p to a command c to a ballot b, indicating that the acceptor p is in ballot b for command c.
-        estimate = [p \in P |-> <<>>], \* the estimate of acceptor p for command c in ballot ballot[p][c].
+        estimate = [p \in P |-> <<>>], \* maps an acceptor p and a command c to the estimate of acceptor p for command c in ballot ballot[p][c].
         propose = <<>>, \* maps a pair <<c,b>> to a timestamp t, indicating that the proposal for command c in ballot b is timestamp t.
         stable = <<>>, \* maps a c to a set of dependencies ds and a timestamp t, indicating that c has been committed with timestamp t and dependencies ds. 
         retry = <<>>, \* maps a pair <<c,b>> to a set of dependencies ds and a timestamp t, indicating that c is to be retried with timestamp t and dependencies ds. 
@@ -74,6 +76,8 @@ Max(xs) ==  CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
             /\ estimate[p][c2].status \notin {"stable","accepted"}
         
         Blocked(p, c, t) == \exists c2 \in DOMAIN estimate[p] : Blocks(p, c, t, c2)
+        
+        GTReceived(p, c) == GT(c, {<<c2, estimate[p][c2].ts>> : c2 \in DOMAIN estimate[p]})
         
         }
  
@@ -108,10 +112,21 @@ Max(xs) ==  CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
                 when ballot[p][c] = bal /\ c \notin DOMAIN estimate[p];
                 when \neg Blocked(self, c, t);
                 when \exists c2 \in DOMAIN estimate[p] : Conflicts(p, c, t, c2); \* There is a conflict.
-                with ( ds = {c2 \in DOMAIN estimate[p] : <<c2, estimate[p][c2].ts>> \prec <<c,t>>} ) {
+                with (  ds = DOMAIN estimate[p]; t2 = GTReceived(c, p) ) {
                   \* Add the command to the local estimate:
-                  estimate := [estimate EXCEPT ![p] = @ ++ <<c, [ts |-> t, status |-> "rejected", pred |-> ds]>>];
+                  estimate := [estimate EXCEPT ![p] = @ ++ <<c, [ts |-> t2[2], status |-> "rejected", pred |-> ds]>>];
                 }
+            }
+        }
+    }
+    
+    macro Retry(c, b) {
+        with (q \in Quorum) {
+            when <<c,b>> \notin DOMAIN retry;
+            when \A p2 \in q : ballot[p2][c] = b /\ c \in DOMAIN estimate[p2];
+            when \E p2 \in q : estimate[p2][c].status = "rejected";
+            with (ds = UNION {estimate[p2][c].pred : p2 \in q}, t = GT(c, {<<c, estimate[p2][c].ts>> : p2 \in q})) {
+                retry := retry ++ <<<<c,b>>, [ts |-> t[2], pred |-> ds]>>;
             }
         }
     }
@@ -161,7 +176,7 @@ Max(xs) ==  CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
 
 *) 
 \* BEGIN TRANSLATION
-\* Label acc of process acc at line 149 col 17 changed to acc_
+\* Label acc of process acc at line 164 col 17 changed to acc_
 VARIABLES ballot, estimate, propose, stable, retry
 
 (* define statement *)
@@ -174,6 +189,8 @@ Blocks(p, c1, t1, c2) ==
     /\ estimate[p][c2].status \notin {"stable","accepted"}
 
 Blocked(p, c, t) == \exists c2 \in DOMAIN estimate[p] : Blocks(p, c, t, c2)
+
+GTReceived(p, c) == GT(c, {<<c2, estimate[p][c2].ts>> : c2 \in DOMAIN estimate[p]})
 
 
 vars == << ballot, estimate, propose, stable, retry >>
@@ -215,8 +232,9 @@ acc(self) == /\ \/ /\ \E c \in C:
                             /\ ballot[self][c] = bal /\ c \notin DOMAIN estimate[self]
                             /\ \neg Blocked(self, c, t)
                             /\ \exists c2 \in DOMAIN estimate[self] : Conflicts(self, c, t, c2)
-                            /\ LET ds == {c2 \in DOMAIN estimate[self] : <<c2, estimate[self][c2].ts>> \prec <<c,t>>} IN
-                                 estimate' = [estimate EXCEPT ![self] = @ ++ <<c, [ts |-> t, status |-> "rejected", pred |-> ds]>>]
+                            /\ LET ds == DOMAIN estimate[self] IN
+                                 LET t2 == GTReceived(c, self) IN
+                                   estimate' = [estimate EXCEPT ![self] = @ ++ <<c, [ts |-> t2[2], status |-> "rejected", pred |-> ds]>>]
                 \/ /\ \E c \in DOMAIN stable \cap DOMAIN estimate[self]:
                         /\ estimate[self][c].ts = stable[c].ts /\ estimate[self][c].pred = stable[c].pred
                         /\ estimate' = [estimate EXCEPT ![self] = [@ EXCEPT ![c] = [@ EXCEPT !.status = "stable"]]]
@@ -233,8 +251,8 @@ TimeStamp == P \times Time
    
 Status == {"pending","stable","accepted","rejected"}
 
-CmdInfo == [ts : Time, pred : SUBSET C]
-CmdInfoWithStat == [ts : Time, pred : SUBSET C, status: Status]
+CmdInfo == [ts : Nat, pred : SUBSET C]
+CmdInfoWithStat == [ts : Nat, pred : SUBSET C, status: Status]
 
 (***************************************************************************)
 (* An invariant describing the type of the different variables.  Note that *)
@@ -253,5 +271,5 @@ Agreement == \A c1,c2 \in DOMAIN stable : c1 # c2 /\ <<c1, stable[c1].ts>> \prec
 
 =============================================================================
 \* Modification History
-\* Last modified Fri Mar 18 12:14:12 EDT 2016 by nano
+\* Last modified Fri Mar 18 15:01:20 EDT 2016 by nano
 \* Created Thu Mar 17 21:48:45 EDT 2016 by nano
