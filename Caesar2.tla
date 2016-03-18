@@ -78,7 +78,9 @@ GT(c, xs) ==
         Blocked(p, c, t) == \exists c2 \in DOMAIN estimate[p] : Blocks(p, c, t, c2)
         
         \* A timestamp (of the form <<c,t>>) greater than the greatest timestamp seen by p. 
-        GTReceived(p, c) == GT(c, {<<c2, estimate[p][c2].ts>> : c2 \in DOMAIN estimate[p]})
+        GTReceived(p, c) == 
+            LET ts == {<<c2, estimate[p][c2].ts>> : c2 \in DOMAIN estimate[p]}
+            IN GT(c, ts)
         
         CmdsWithLowerT(p, c, t) == {c2 \in DOMAIN estimate[p] : <<c2, estimate[p][c2].ts>> \prec <<c,t>>}
         
@@ -115,7 +117,7 @@ GT(c, xs) ==
                 when ballot[p][c] = bal /\ c \notin DOMAIN estimate[p];
                 when \neg Blocked(self, c, t);
                 when \exists c2 \in DOMAIN estimate[p] : Conflicts(p, c, t, c2); \* There is a conflict.
-                with (  ds = DOMAIN estimate[p]; t2 = GTReceived(c, p) ) {
+                with (  ds = DOMAIN estimate[p]; t2 = GTReceived(p, c) ) {
                   \* Add the command to the local estimate:
                   estimate := [estimate EXCEPT ![p] = @ ++ <<c, [ts |-> t2[2], status |-> "rejected", pred |-> ds]>>];
                 }
@@ -209,7 +211,7 @@ GT(c, xs) ==
 
 *) 
 \* BEGIN TRANSLATION
-\* Label acc of process acc at line 195 col 17 changed to acc_
+\* Label acc of process acc at line 197 col 17 changed to acc_
 VARIABLES ballot, estimate, propose, stable, retry
 
 (* define statement *)
@@ -224,7 +226,9 @@ Blocks(p, c1, t1, c2) ==
 Blocked(p, c, t) == \exists c2 \in DOMAIN estimate[p] : Blocks(p, c, t, c2)
 
 
-GTReceived(p, c) == GT(c, {<<c2, estimate[p][c2].ts>> : c2 \in DOMAIN estimate[p]})
+GTReceived(p, c) ==
+    LET ts == {<<c2, estimate[p][c2].ts>> : c2 \in DOMAIN estimate[p]}
+    IN GT(c, ts)
 
 CmdsWithLowerT(p, c, t) == {c2 \in DOMAIN estimate[p] : <<c2, estimate[p][c2].ts>> \prec <<c,t>>}
 
@@ -285,7 +289,7 @@ acc(self) == /\ \/ /\ \E c \in C:
                             /\ \neg Blocked(self, c, t)
                             /\ \exists c2 \in DOMAIN estimate[self] : Conflicts(self, c, t, c2)
                             /\ LET ds == DOMAIN estimate[self] IN
-                                 LET t2 == GTReceived(c, self) IN
+                                 LET t2 == GTReceived(self, c) IN
                                    estimate' = [estimate EXCEPT ![self] = @ ++ <<c, [ts |-> t2[2], status |-> "rejected", pred |-> ds]>>]
                 \/ /\ \E c \in DOMAIN stable \cap DOMAIN estimate[self]:
                         /\ estimate[self][c].ts = stable[c].ts /\ estimate[self][c].pred = stable[c].pred
@@ -331,5 +335,5 @@ Agreement == \A c1,c2 \in DOMAIN stable : c1 # c2 /\ <<c1, stable[c1].ts>> \prec
 
 =============================================================================
 \* Modification History
-\* Last modified Fri Mar 18 17:50:31 EDT 2016 by nano
+\* Last modified Fri Mar 18 18:04:57 EDT 2016 by nano
 \* Created Thu Mar 17 21:48:45 EDT 2016 by nano
