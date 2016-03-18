@@ -89,11 +89,28 @@ Max(xs) ==  CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
         with (c \in C) {
             with (bal = ballot[p][c], t = propose[<<c, ballot[p][c]>>]) {
                 when <<c, bal>> \in DOMAIN propose;
+                when ballot[p][c] = bal /\ c \notin DOMAIN estimate[p];
                 when \neg Blocked(self, c, t);
                 when \forall c2 \in DOMAIN estimate[p] : \neg Conflicts(p, c, t, c2); \* There is no conflict.
                 with ( ds = {c2 \in DOMAIN estimate[p] : <<c2, estimate[p][c2].ts>> \prec <<c,t>>} ) { 
                   \* Add the command to the local estimate:
                   estimate := [estimate EXCEPT ![p] = @ ++ <<c, [ts |-> t, status |-> "pending", pred |-> ds]>>];
+                }
+            }
+        }
+    }
+    
+    \* Models replying to a proposal with an ACK message.  
+    macro RejectPropose(p) {
+        with (c \in C) {
+            with (bal = ballot[p][c], t = propose[<<c, ballot[p][c]>>]) {
+                when <<c, bal>> \in DOMAIN propose;
+                when ballot[p][c] = bal /\ c \notin DOMAIN estimate[p];
+                when \neg Blocked(self, c, t);
+                when \exists c2 \in DOMAIN estimate[p] : Conflicts(p, c, t, c2); \* There is a conflict.
+                with ( ds = {c2 \in DOMAIN estimate[p] : <<c2, estimate[p][c2].ts>> \prec <<c,t>>} ) {
+                  \* Add the command to the local estimate:
+                  estimate := [estimate EXCEPT ![p] = @ ++ <<c, [ts |-> t, status |-> "rejected", pred |-> ds]>>];
                 }
             }
         }
@@ -106,6 +123,13 @@ Max(xs) ==  CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
                     t = propose[<<c,b>>] ) {
                 stable := stable ++ <<c, [ts |-> t, pred |-> ds]>>;
             }
+        }
+    }
+    
+    macro LearnStable(p) {
+        with (c \in DOMAIN stable \cap DOMAIN estimate[p]) {
+            when estimate[p][c].ts = stable[c].ts /\ estimate[p][c].pred = stable[c].pred;
+            estimate := [estimate EXCEPT ![p] = [@ EXCEPT ![c] = [@ EXCEPT !.status = "stable"]]];
         }
     }
   
@@ -123,7 +147,13 @@ Max(xs) ==  CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
     
     process (acc \in P) {
         acc:    while (TRUE) {
-                    AckPropose(self);
+                    either {
+                        AckPropose(self);
+                    } or {
+                        RejectPropose(self);
+                    } or {
+                        LearnStable(self);
+                    }
                 }
     }
     
@@ -131,7 +161,7 @@ Max(xs) ==  CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
 
 *) 
 \* BEGIN TRANSLATION
-\* Label acc of process acc at line 125 col 17 changed to acc_
+\* Label acc of process acc at line 149 col 17 changed to acc_
 VARIABLES ballot, estimate, propose, stable, retry
 
 (* define statement *)
@@ -169,14 +199,27 @@ leader(self) == /\ \/ /\ \E t \in Time:
                       /\ UNCHANGED propose
                 /\ UNCHANGED << ballot, estimate, retry >>
 
-acc(self) == /\ \E c \in C:
-                  LET bal == ballot[self][c] IN
-                    LET t == propose[<<c, ballot[self][c]>>] IN
-                      /\ <<c, bal>> \in DOMAIN propose
-                      /\ \neg Blocked(self, c, t)
-                      /\ \forall c2 \in DOMAIN estimate[self] : \neg Conflicts(self, c, t, c2)
-                      /\ LET ds == {c2 \in DOMAIN estimate[self] : <<c2, estimate[self][c2].ts>> \prec <<c,t>>} IN
-                           estimate' = [estimate EXCEPT ![self] = @ ++ <<c, [ts |-> t, status |-> "pending", pred |-> ds]>>]
+acc(self) == /\ \/ /\ \E c \in C:
+                        LET bal == ballot[self][c] IN
+                          LET t == propose[<<c, ballot[self][c]>>] IN
+                            /\ <<c, bal>> \in DOMAIN propose
+                            /\ ballot[self][c] = bal /\ c \notin DOMAIN estimate[self]
+                            /\ \neg Blocked(self, c, t)
+                            /\ \forall c2 \in DOMAIN estimate[self] : \neg Conflicts(self, c, t, c2)
+                            /\ LET ds == {c2 \in DOMAIN estimate[self] : <<c2, estimate[self][c2].ts>> \prec <<c,t>>} IN
+                                 estimate' = [estimate EXCEPT ![self] = @ ++ <<c, [ts |-> t, status |-> "pending", pred |-> ds]>>]
+                \/ /\ \E c \in C:
+                        LET bal == ballot[self][c] IN
+                          LET t == propose[<<c, ballot[self][c]>>] IN
+                            /\ <<c, bal>> \in DOMAIN propose
+                            /\ ballot[self][c] = bal /\ c \notin DOMAIN estimate[self]
+                            /\ \neg Blocked(self, c, t)
+                            /\ \exists c2 \in DOMAIN estimate[self] : Conflicts(self, c, t, c2)
+                            /\ LET ds == {c2 \in DOMAIN estimate[self] : <<c2, estimate[self][c2].ts>> \prec <<c,t>>} IN
+                                 estimate' = [estimate EXCEPT ![self] = @ ++ <<c, [ts |-> t, status |-> "rejected", pred |-> ds]>>]
+                \/ /\ \E c \in DOMAIN stable \cap DOMAIN estimate[self]:
+                        /\ estimate[self][c].ts = stable[c].ts /\ estimate[self][c].pred = stable[c].pred
+                        /\ estimate' = [estimate EXCEPT ![self] = [@ EXCEPT ![c] = [@ EXCEPT !.status = "stable"]]]
              /\ UNCHANGED << ballot, propose, stable, retry >>
 
 Next == (\E self \in C \times Ballot: leader(self))
@@ -210,5 +253,5 @@ Agreement == \A c1,c2 \in DOMAIN stable : c1 # c2 /\ <<c1, stable[c1].ts>> \prec
 
 =============================================================================
 \* Modification History
-\* Last modified Fri Mar 18 11:48:59 EDT 2016 by nano
+\* Last modified Fri Mar 18 12:14:12 EDT 2016 by nano
 \* Created Thu Mar 17 21:48:45 EDT 2016 by nano
