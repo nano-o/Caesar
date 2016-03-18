@@ -15,21 +15,21 @@ Image(f) == {f[x] : x \in DOMAIN f}
 (***************************************************************************)
 (* N is the number of processes, C the set of commands.                    *)
 (***************************************************************************)
-CONSTANTS N, MaxTime, Quorum, FastQuorum, MaxBallot, NumCmds
+CONSTANTS N, MaxTime, Quorum, FastQuorum, NumBallots, NumCmds
 
 ASSUME NumCmds \in Nat /\ NumCmds > 0
 
-C == 1..NumCmds
+C == 0..(NumCmds-1)
 
 ASSUME N \in Nat /\ N > 0
 
-P ==  1..N 
+P ==  0..(N-1) 
 
 Time == 1..MaxTime
 
-ASSUME MaxBallot \in Nat /\ MaxBallot >= 1
+ASSUME NumBallots \in Nat /\ NumBallots >= 1
 
-Ballot == 1..MaxBallot
+Ballot == 0..(NumBallots-1)
 
 ASSUME \A Q \in Quorum : Q \subseteq P
 ASSUME \A Q1,Q2 \in Quorum : Q1 \cap Q2 # {}
@@ -57,7 +57,7 @@ Max(xs) ==  CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
 --algorithm Caesar {
 
     variables
-        ballot = [p \in P |-> [c \in C |-> 1]], \* map an acceptor p to a command c to a ballot b, indicating that the acceptor p is in ballot b for command c.
+        ballot = [p \in P |-> [c \in C |-> 0]], \* map an acceptor p to a command c to a ballot b, indicating that the acceptor p is in ballot b for command c.
         estimate = [p \in P |-> <<>>], \* the estimate of acceptor p for command c in ballot ballot[p][c].
         propose = <<>>, \* maps a pair <<c,b>> to a timestamp t, indicating that the proposal for command c in ballot b is timestamp t.
         stable = <<>>, \* maps a c to a set of dependencies ds and a timestamp t, indicating that c has been committed with timestamp t and dependencies ds. 
@@ -66,7 +66,7 @@ Max(xs) ==  CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
     define {
         
         Conflicts(p, c1, t1, c2) ==
-            /\ t1 < estimate[p][c2].ts
+            /\ <<c1,t1>> \prec <<c2, estimate[p][c2].ts>>
             /\ c1 \notin estimate[p][c2].pred
         
         Blocks(p, c1, t1, c2) ==
@@ -91,7 +91,7 @@ Max(xs) ==  CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
                 when <<c, bal>> \in DOMAIN propose;
                 when \neg Blocked(self, c, t);
                 when \forall c2 \in DOMAIN estimate[p] : \neg Conflicts(p, c, t, c2); \* There is no conflict.
-                with ( ds = {c2 \in DOMAIN estimate[p] : estimate[p][c2].ts < t} ) { 
+                with ( ds = {c2 \in DOMAIN estimate[p] : <<c2, estimate[p][c2].ts>> \prec <<c,t>>} ) { 
                   \* Add the command to the local estimate:
                   estimate := [estimate EXCEPT ![p] = @ ++ <<c, [ts |-> t, status |-> "pending", pred |-> ds]>>];
                 }
@@ -136,7 +136,7 @@ VARIABLES ballot, estimate, propose, stable, retry
 
 (* define statement *)
 Conflicts(p, c1, t1, c2) ==
-    /\ t1 < estimate[p][c2].ts
+    /\ <<c1,t1>> \prec <<c2, estimate[p][c2].ts>>
     /\ c1 \notin estimate[p][c2].pred
 
 Blocks(p, c1, t1, c2) ==
@@ -151,7 +151,7 @@ vars == << ballot, estimate, propose, stable, retry >>
 ProcSet == (C \times Ballot) \cup (P)
 
 Init == (* Global variables *)
-        /\ ballot = [p \in P |-> [c \in C |-> 1]]
+        /\ ballot = [p \in P |-> [c \in C |-> 0]]
         /\ estimate = [p \in P |-> <<>>]
         /\ propose = <<>>
         /\ stable = <<>>
@@ -175,7 +175,7 @@ acc(self) == /\ \E c \in C:
                       /\ <<c, bal>> \in DOMAIN propose
                       /\ \neg Blocked(self, c, t)
                       /\ \forall c2 \in DOMAIN estimate[self] : \neg Conflicts(self, c, t, c2)
-                      /\ LET ds == {c2 \in DOMAIN estimate[self] : estimate[self][c2].ts < t} IN
+                      /\ LET ds == {c2 \in DOMAIN estimate[self] : <<c2, estimate[self][c2].ts>> \prec <<c,t>>} IN
                            estimate' = [estimate EXCEPT ![self] = @ ++ <<c, [ts |-> t, status |-> "pending", pred |-> ds]>>]
              /\ UNCHANGED << ballot, propose, stable, retry >>
 
@@ -205,10 +205,10 @@ TypeInvariant ==
     /\  \E D \in SUBSET C : stable \in [D -> CmdInfo]
     /\  \E D \in SUBSET (C \times Ballot) : retry \in [D -> CmdInfo]
     
-Agreement == \A c1,c2 \in DOMAIN stable : c1 # c2 /\ stable[c1].ts < stable[c2].ts =>
+Agreement == \A c1,c2 \in DOMAIN stable : c1 # c2 /\ <<c1, stable[c1].ts>> \prec <<c2, stable[c2].ts>> =>
     c1 \in stable[c2].pred
 
 =============================================================================
 \* Modification History
-\* Last modified Fri Mar 18 11:34:59 EDT 2016 by nano
+\* Last modified Fri Mar 18 11:48:59 EDT 2016 by nano
 \* Created Thu Mar 17 21:48:45 EDT 2016 by nano
