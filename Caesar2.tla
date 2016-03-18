@@ -197,12 +197,13 @@ GT(c, xs) ==
         }
     }
     
-    (*
     macro  RecoverStable(c, b) {
         with (q \in Quorum) {
-            when \A p2 \in q : ballot[p2][c] = b /\ c \in DOMAIN estimate[p2] /\ estimate[p2][c].status = "recovery-seen"
+            when \A p2 \in q : ballot[p2][c] = b /\ c \in DOMAIN estimate[p2] /\ estimate[p2][c].status = "recovery-stable";
+            skip; 
+            \* TODO: useless here. Start with RecoveryAccepted.
         }
-    } *)
+    }
   
     process (leader \in C \times Ballot) {
         ldr:    while (TRUE) {
@@ -386,5 +387,5 @@ Agreement == \A c1,c2 \in DOMAIN stable : c1 # c2 /\ <<c1, stable[c1].ts>> \prec
 
 =============================================================================
 \* Modification History
-\* Last modified Fri Mar 18 18:53:03 EDT 2016 by nano
+\* Last modified Fri Mar 18 19:02:43 EDT 2016 by nano
 \* Created Thu Mar 17 21:48:45 EDT 2016 by nano
