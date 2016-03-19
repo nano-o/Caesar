@@ -95,7 +95,7 @@ GTE(c, xs) ==
         
         CmdsWithLowerT(p, c, t) == {c2 \in DOMAIN estimate[p] : <<c2, estimate[p][c2].ts>> \prec <<c,t>>}
         
-        RecoveryStatus == {"recovery-pending", "recovery-rejected", "recovery-stable", "recovery-accepted", "recovery-notseen"}
+        RecoveryStatus == {"recovery-pending", "recovery-rejected", "recovery-stable", "recovery-accepted"}
         
         }
  
@@ -205,8 +205,6 @@ GTE(c, xs) ==
             when c \in DOMAIN estimate[p] => estimate[p][c].status \notin RecoveryStatus;
             if (c \in DOMAIN estimate[p]) 
                 estimate := [estimate EXCEPT ![p] = [@ EXCEPT ![c] = [@ EXCEPT !.status = "recovery-" \o estimate[p][c].status]]];
-            else \* That's not correct: we cannot add the command to the domain of estimate here, or we would need to introduce the waiting condition.
-                estimate := [estimate EXCEPT ![p] = @ ++ <<c, [ts |-> 0, pred |-> {}, status |-> "recovery-notseen"]>>];
         }
     }
     
@@ -246,13 +244,11 @@ GTE(c, xs) ==
         }
     }
     
-    \* here we have a problem: we cannot include a notseen command in the deps of other commands..
     macro  RecoverNotSeen(c, b) {
         with (q \in Quorum; p \in q) {
             when \A p2 \in q : ballot[p2][c] = b;
             when \A p2 \in q : \neg (ballot[p][c] = b /\ c \in DOMAIN estimate[p] 
                 /\ estimate[p][c].status \in {"recovery-accepted","recovery-rejected", "recovery-pending", "recovery-stable"});
-            when ballot[p][c] = b /\ c \in DOMAIN estimate[p] /\ estimate[p][c].status = "recovery-notseen";
             with (t \in Time) {
                 Propose(c, b, t); 
             }
@@ -307,7 +303,7 @@ GTE(c, xs) ==
 
 *) 
 \* BEGIN TRANSLATION
-\* Label acc of process acc at line 291 col 17 changed to acc_
+\* Label acc of process acc at line 287 col 17 changed to acc_
 VARIABLES ballot, estimate, propose, stable, retry, recover
 
 (* define statement *)
@@ -328,7 +324,7 @@ GTReceived(p, c) ==
 
 CmdsWithLowerT(p, c, t) == {c2 \in DOMAIN estimate[p] : <<c2, estimate[p][c2].ts>> \prec <<c,t>>}
 
-RecoveryStatus == {"recovery-pending", "recovery-rejected", "recovery-stable", "recovery-accepted", "recovery-notseen"}
+RecoveryStatus == {"recovery-pending", "recovery-rejected", "recovery-stable", "recovery-accepted"}
 
 
 vars == << ballot, estimate, propose, stable, retry, recover >>
@@ -408,7 +404,6 @@ leader(self) == /\ LET c == self[1] IN
                                  /\ \A p2 \in q : ballot[p2][c] = b
                                  /\  \A p2 \in q : \neg (ballot[p][c] = b /\ c \in DOMAIN estimate[p]
                                     /\ estimate[p][c].status \in {"recovery-accepted","recovery-rejected", "recovery-pending", "recovery-stable"})
-                                 /\ ballot[p][c] = b /\ c \in DOMAIN estimate[p] /\ estimate[p][c].status = "recovery-notseen"
                                  /\ \E t \in Time:
                                       /\ \neg <<c,b>> \in DOMAIN propose
                                       /\ propose' = propose ++ <<<<c,b>>, t>>
@@ -459,7 +454,8 @@ acc(self) == /\ \/ /\ \E c \in C:
                             /\ c \in DOMAIN estimate[self] => estimate[self][c].status \notin RecoveryStatus
                             /\ IF c \in DOMAIN estimate[self]
                                   THEN /\ estimate' = [estimate EXCEPT ![self] = [@ EXCEPT ![c] = [@ EXCEPT !.status = "recovery-" \o estimate[self][c].status]]]
-                                  ELSE /\ estimate' = [estimate EXCEPT ![self] = @ ++ <<c, [ts |-> 0, pred |-> {}, status |-> "recovery-notseen"]>>]
+                                  ELSE /\ TRUE
+                                       /\ UNCHANGED estimate
              /\ UNCHANGED << propose, stable, retry, recover >>
 
 Next == (\E self \in C \times Ballot: leader(self))
@@ -535,5 +531,5 @@ WeakAgreement == \A c \in C : \A s1, s2 \in DOMAIN stable :
 
 =============================================================================
 \* Modification History
-\* Last modified Sat Mar 19 18:15:21 EDT 2016 by nano
+\* Last modified Sat Mar 19 18:16:26 EDT 2016 by nano
 \* Created Thu Mar 17 21:48:45 EDT 2016 by nano
