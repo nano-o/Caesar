@@ -72,7 +72,7 @@ GTE(c, xs) ==
         ballot = [p \in P |-> [c \in C |-> 0]], \* map an acceptor p to a command c to a ballot b, indicating that the acceptor p is in ballot b for command c.
         estimate = [p \in P |-> <<>>], \* maps an acceptor p and a command c to the estimate of acceptor p for command c in ballot ballot[p][c].
         propose = <<>>, \* maps a pair <<c,b>> to a timestamp t, indicating that the proposal for command c in ballot b is timestamp t.
-        stable = <<>>, \* maps a command c to a set of dependencies ds and a timestamp t, indicating that c has been committed with timestamp t and dependencies ds. 
+        stable = <<>>, \* maps a command c and a ballot b to a set of dependencies ds and a timestamp t, indicating that c has been committed in ballot b with timestamp t and dependencies ds. 
         retry = <<>>, \* maps a pair <<c,b>> to a set of dependencies ds and a timestamp t, indicating that c is to be retried with timestamp t and dependencies ds.
         recover = {} \* a set of pairs <<c,b>>. When <<c,v>> \in recover, it means that start-recovery messages have been sent for c in ballot b.  
 
@@ -164,9 +164,9 @@ GTE(c, xs) ==
     macro FastDecision(c, b) {
         with (q \in FastQuorum) {
             when \A p2 \in q : ballot[p2][c] = b /\ c \in DOMAIN estimate[p2] /\ estimate[p2][c].status = "pending";
-            with (  ds = UNION {estimate[p2][c].pred : p2 \in q};
+            with (  ds = UNION {estimate[p2][c].pred : p2 \in q} \ {c};
                     t = propose[<<c,b>>] ) {
-                stable := stable ++ <<c, [ts |-> t, pred |-> ds]>>;
+                stable := stable ++ <<<<c,b>>, [ts |-> t, pred |-> ds]>>;
             }
         }
     }
@@ -174,17 +174,20 @@ GTE(c, xs) ==
     macro SlowDecision(c, b) {
         with (q \in Quorum) {
             when \A p2 \in q : ballot[p2][c] = b /\ c \in DOMAIN estimate[p2] /\ estimate[p2][c].status = "accepted";
-            with (  ds = UNION {estimate[p2][c].pred : p2 \in q};
+            with (  ds = UNION {estimate[p2][c].pred : p2 \in q} \ {c};
                     t = retry[<<c,b>>].ts ) {
-                stable := stable ++ <<c, [ts |-> t, pred |-> ds]>>;
+                stable := stable ++ <<<<c,b>>, [ts |-> t, pred |-> ds]>>;
             }
         }
     }
     
     macro LearnStable(p) {
-        with (c \in DOMAIN stable \cap DOMAIN estimate[p]) {
-            when estimate[p][c].ts = stable[c].ts /\ estimate[p][c].pred = stable[c].pred;
-            estimate := [estimate EXCEPT ![p] = [@ EXCEPT ![c] = [@ EXCEPT !.status = "stable"]]]; \* TODO: okay?
+        with (c \in C) {
+            with (b = ballot[p][c]) {
+                when <<c,b>> \in DOMAIN stable;
+                estimate := [estimate EXCEPT ![p] = 
+                    @ ++ <<c, stable[<<c,b>>] ++ <<"status", "stable">> >>];
+            }
         }
     }
     
@@ -247,7 +250,7 @@ GTE(c, xs) ==
         with (q \in Quorum; p \in q) {
             when \A p2 \in q : ballot[p2][c] = b;
             when \A p2 \in q : \neg (ballot[p][c] = b /\ c \in DOMAIN estimate[p] 
-                /\ estimate[p][c].status = {"recovery-accepted","recovery-rejected", "recovery-pending", "recovery-stable"});
+                /\ estimate[p][c].status \in {"recovery-accepted","recovery-rejected", "recovery-pending", "recovery-stable"});
             when ballot[p][c] = b /\ c \in DOMAIN estimate[p] /\ estimate[p][c].status = "recovery-notseen";
             with (t \in Time) {
                 Propose(c, b, t); 
@@ -303,7 +306,7 @@ GTE(c, xs) ==
 
 *) 
 \* BEGIN TRANSLATION
-\* Label acc of process acc at line 287 col 17 changed to acc_
+\* Label acc of process acc at line 290 col 17 changed to acc_
 VARIABLES ballot, estimate, propose, stable, retry, recover
 
 (* define statement *)
@@ -347,9 +350,9 @@ leader(self) == /\ LET c == self[1] IN
                           /\ UNCHANGED <<stable, retry, recover>>
                        \/ /\ \E q \in FastQuorum:
                                /\ \A p2 \in q : ballot[p2][c] = b /\ c \in DOMAIN estimate[p2] /\ estimate[p2][c].status = "pending"
-                               /\ LET ds == UNION {estimate[p2][c].pred : p2 \in q} IN
+                               /\ LET ds == UNION {estimate[p2][c].pred : p2 \in q} \ {c} IN
                                     LET t == propose[<<c,b>>] IN
-                                      stable' = stable ++ <<c, [ts |-> t, pred |-> ds]>>
+                                      stable' = stable ++ <<<<c,b>>, [ts |-> t, pred |-> ds]>>
                           /\ UNCHANGED <<propose, retry, recover>>
                        \/ /\ \E q \in Quorum:
                                /\ <<c,b>> \notin DOMAIN retry
@@ -361,9 +364,9 @@ leader(self) == /\ LET c == self[1] IN
                           /\ UNCHANGED <<propose, stable, recover>>
                        \/ /\ \E q \in Quorum:
                                /\ \A p2 \in q : ballot[p2][c] = b /\ c \in DOMAIN estimate[p2] /\ estimate[p2][c].status = "accepted"
-                               /\ LET ds == UNION {estimate[p2][c].pred : p2 \in q} IN
+                               /\ LET ds == UNION {estimate[p2][c].pred : p2 \in q} \ {c} IN
                                     LET t == retry[<<c,b>>].ts IN
-                                      stable' = stable ++ <<c, [ts |-> t, pred |-> ds]>>
+                                      stable' = stable ++ <<<<c,b>>, [ts |-> t, pred |-> ds]>>
                           /\ UNCHANGED <<propose, retry, recover>>
                        \/ /\ b > 0
                           /\ \E b2 \in Ballot : <<c,b2>> \in DOMAIN propose
@@ -403,7 +406,7 @@ leader(self) == /\ LET c == self[1] IN
                                \E p \in q:
                                  /\ \A p2 \in q : ballot[p2][c] = b
                                  /\  \A p2 \in q : \neg (ballot[p][c] = b /\ c \in DOMAIN estimate[p]
-                                    /\ estimate[p][c].status = {"recovery-accepted","recovery-rejected", "recovery-pending", "recovery-stable"})
+                                    /\ estimate[p][c].status \in {"recovery-accepted","recovery-rejected", "recovery-pending", "recovery-stable"})
                                  /\ ballot[p][c] = b /\ c \in DOMAIN estimate[p] /\ estimate[p][c].status = "recovery-notseen"
                                  /\ \E t \in Time:
                                       /\ \neg <<c,b>> \in DOMAIN propose
@@ -432,9 +435,11 @@ acc(self) == /\ \/ /\ \E c \in C:
                                     LET t2 == GTReceived(self, c) IN
                                       estimate' = [estimate EXCEPT ![self] = @ ++ <<c, [ts |-> t2[2], status |-> "rejected", pred |-> ds]>>]
                    /\ UNCHANGED ballot
-                \/ /\ \E c \in DOMAIN stable \cap DOMAIN estimate[self]:
-                        /\ estimate[self][c].ts = stable[c].ts /\ estimate[self][c].pred = stable[c].pred
-                        /\ estimate' = [estimate EXCEPT ![self] = [@ EXCEPT ![c] = [@ EXCEPT !.status = "stable"]]]
+                \/ /\ \E c \in C:
+                        LET b == ballot[self][c] IN
+                          /\ <<c,b>> \in DOMAIN stable
+                          /\ estimate' =         [estimate EXCEPT ![self] =
+                                         @ ++ <<c, stable[<<c,b>>] ++ <<"status", "stable">> >>]
                    /\ UNCHANGED ballot
                 \/ /\ \E c \in C:
                         LET bal == ballot[self][c] IN
@@ -462,8 +467,6 @@ Next == (\E self \in C \times Ballot: leader(self))
 Spec == Init /\ [][Next]_vars
 
 \* END TRANSLATION
-
-TimeStamp == P \times Time 
    
 Status == {"pending", "stable", "accepted", "rejected"} \cup RecoveryStatus
 
@@ -482,405 +485,54 @@ TypeInvariant ==
     /\  \E D \in SUBSET C : stable \in [D -> CmdInfo]
     /\  \E D \in SUBSET (C \times Ballot) : retry \in [D -> CmdInfo]
     /\  recover \in SUBSET (C \times (Ballot \ {0}))
-    
-Agreement == \A c1,c2 \in DOMAIN stable : c1 # c2 /\ <<c1, stable[c1].ts>> \prec <<c2, stable[c2].ts>> =>
+
+(***************************************************************************)
+(* This invariant must hold for the execution phase (not formalized here)  *)
+(* to be correct.                                                          *)
+(***************************************************************************)
+GraphInvariant == \A c1,c2 \in DOMAIN stable : c1 # c2 /\ <<c1, stable[c1].ts>> \prec <<c2, stable[c2].ts>> =>
     c1 \in stable[c2].pred
 
 (***************************************************************************)
-(* A trace showing a counter-example to the safety of the recovery         *)
-(* process.  It ends up with a command being made stable with two          *)
-(* different timestamps.  For that to happen we need 5 replicas, the       *)
-(* possiblity to propose with time 1, 2, or 3, at least 3 ballots, and at  *)
-(* least two commands.  In the first ballot c0 is rejected, fast-commited  *)
-(* in the second ballot, and fast committed in the third but with a        *)
-(* different timestamp, because of the rejected status from the first      *)
-(* ballot.                                                                 *)
+(* The agreement property.                                                 *)
 (***************************************************************************)
 
-Step1 == 
-    /\ DOMAIN estimate[0] = {1} 
-    /\ estimate[0][1].status = "stable" 
-    /\ ballot[0][1] = 0  
+(***************************************************************************)
+(* A command is executable if all its dependencies which have a lower      *)
+(* timestamp are also executable.  Since no two commands can have the same *)
+(* timestamp, the recursion is well founded.                               *)
+(***************************************************************************)
+RECURSIVE Executable(_)
+Executable(s) == 
+    LET c == s[1]
+        b == s[2] 
+    IN  /\  <<c,b>> \in DOMAIN stable 
+        /\  \A c2 \in stable[<<c,b>>].pred : 
+            /\  \E s2 \in DOMAIN stable : 
+                /\  s2[1] = c2
+                /\  (<<c2, stable[s2].ts>> \prec <<c, stable[s].ts>> => Executable(s2))
 
-Constraint1 ==
-    /\  \A q \in P : DOMAIN estimate[q] \subseteq {1}
-    /\  DOMAIN retry = {}
-    /\  recover = {}
-    /\  Cardinality(DOMAIN propose) <= 2
-        
-State1 ==
-/\  ballot = ( 0 :> (0 :> 0 @@ 1 :> 0) @@
-  1 :> (0 :> 0 @@ 1 :> 0) @@
-  2 :> (0 :> 0 @@ 1 :> 0) @@
-  3 :> (0 :> 0 @@ 1 :> 0) @@
-  4 :> (0 :> 0 @@ 1 :> 0) )
-/\  estimate = ( 0 :> <<[ts |-> 1, pred |-> {}, status |-> "stable"]>> @@
-  1 :> <<>> @@
-  2 :> <<[ts |-> 1, pred |-> {}, status |-> "pending"]>> @@
-  3 :> <<[ts |-> 1, pred |-> {}, status |-> "pending"]>> @@
-  4 :> <<[ts |-> 1, pred |-> {}, status |-> "pending"]>> )
-/\  propose = (<<1, 0>> :> 1)
-/\  recover = {}
-/\  retry = <<>>
-/\  stable = <<[ts |-> 1, pred |-> {}]>>
+StableTimeStamps == { info.ts : info \in Image(stable) }
 
+TimeStamp(c) == CHOOSE ts \in StableTimeStamps : \E s \in DOMAIN stable :
+    s[1] = c /\ stable[s].ts = ts
 
-Step2 == 
-    /\ DOMAIN estimate[0] = {0,1} 
-    /\ estimate[0][0].status = "rejected" 
-    /\ ballot[0][0] = 0
+RealDeps(c, t, ds) ==
+        {d \in ds : <<d,TimeStamp(d)>> \prec <<c,t>> }
 
-Constraint2 ==
-    /\  \A q \in P : 0 # q => 0 \notin DOMAIN estimate[q]
-    /\  DOMAIN retry = {}
-    /\  recover = {}
-    /\  Cardinality(DOMAIN propose) <= 2
-    
-State2 == 
-/\  ballot = ( 0 :> (0 :> 0 @@ 1 :> 0) @@
-  1 :> (0 :> 0 @@ 1 :> 0) @@
-  2 :> (0 :> 0 @@ 1 :> 0) @@
-  3 :> (0 :> 0 @@ 1 :> 0) @@
-  4 :> (0 :> 0 @@ 1 :> 0) )
-/\  estimate = ( 0 :>
-      ( 0 :> [ts |-> 2, pred |-> 1..1, status |-> "rejected"] @@
-        1 :> [ts |-> 1, pred |-> {}, status |-> "stable"] ) @@
-  1 :> <<>> @@
-  2 :> <<[ts |-> 1, pred |-> {}, status |-> "pending"]>> @@
-  3 :> <<[ts |-> 1, pred |-> {}, status |-> "pending"]>> @@
-  4 :> <<[ts |-> 1, pred |-> {}, status |-> "pending"]>> )
-/\  propose = (<<0, 0>> :> 1 @@ <<1, 0>> :> 1)
-/\  recover = {}
-/\  retry = <<>>
-/\  stable = <<[ts |-> 1, pred |-> {}]>>
+(***************************************************************************)
+(* If a command c is made stable in two different ballots, then its        *)
+(* timestamp and dependencies are the same in both.                        *)
+(***************************************************************************)
+Agreement == \A c \in C : \A s1, s2 \in DOMAIN stable : 
+    Executable(s1) /\ Executable(s2) /\ s1[1] = c /\ s2[1] = c 
+        =>  /\  stable[s1].ts = stable[s2].ts
+            /\  RealDeps(c, TimeStamp(c), stable[s1].pred) = RealDeps(c, TimeStamp(c), stable[s2].pred) 
 
-Step3 ==
-    recover = {<<0,1>>} 
-    
-Constraint3 ==
-    /\  estimate[0]' = estimate[0] /\ ballot[0]' = ballot[0]
-    /\  \A q \in P : 0 # q => 0 \notin DOMAIN estimate[q]
-    /\  DOMAIN retry = {}
-    /\  Cardinality(DOMAIN propose) <= 2
-    
-State3 ==
-/\  ballot = ( 0 :> (0 :> 0 @@ 1 :> 0) @@
-  1 :> (0 :> 0 @@ 1 :> 0) @@
-  2 :> (0 :> 0 @@ 1 :> 0) @@
-  3 :> (0 :> 0 @@ 1 :> 0) @@
-  4 :> (0 :> 0 @@ 1 :> 0) )
-/\  estimate = ( 0 :>
-      ( 0 :> [ts |-> 2, pred |-> 1..1, status |-> "rejected"] @@
-        1 :> [ts |-> 1, pred |-> {}, status |-> "stable"] ) @@
-  1 :> <<>> @@
-  2 :> <<[ts |-> 1, pred |-> {}, status |-> "pending"]>> @@
-  3 :> <<[ts |-> 1, pred |-> {}, status |-> "pending"]>> @@
-  4 :> <<[ts |-> 1, pred |-> {}, status |-> "pending"]>> )
-/\  propose = (<<0, 0>> :> 1 @@ <<1, 0>> :> 1)
-/\  recover = {<<0, 1>>}
-/\  retry = <<>>
-/\  stable = <<[ts |-> 1, pred |-> {}]>>
-
-
-Step4 == \E q \in FastQuorum : 
-    /\  \A p \in q : 0 \in DOMAIN estimate[p] /\ estimate[p][0].status \in RecoveryStatus
-    /\  0 \notin q
-
-Constraint4 ==
-    /\  estimate[0]' = estimate[0] /\ ballot[0]' = ballot[0]
-    /\  DOMAIN retry = {}
-    /\  Cardinality(DOMAIN propose) <= 2
-
-State4 == 
-/\  ballot = ( 0 :> (0 :> 0 @@ 1 :> 0) @@
-  1 :> (0 :> 1 @@ 1 :> 0) @@
-  2 :> (0 :> 1 @@ 1 :> 0) @@
-  3 :> (0 :> 1 @@ 1 :> 0) @@
-  4 :> (0 :> 1 @@ 1 :> 0) )
-/\  estimate = ( 0 :>
-      ( 0 :> [ts |-> 2, pred |-> 1..1, status |-> "rejected"] @@
-        1 :> [ts |-> 1, pred |-> {}, status |-> "stable"] ) @@
-  1 :> (0 :> [ts |-> 0, pred |-> {}, status |-> "recovery-notseen"]) @@
-  2 :>
-      ( 0 :> [ts |-> 0, pred |-> {}, status |-> "recovery-notseen"] @@
-        1 :> [ts |-> 1, pred |-> {}, status |-> "pending"] ) @@
-  3 :>
-      ( 0 :> [ts |-> 0, pred |-> {}, status |-> "recovery-notseen"] @@
-        1 :> [ts |-> 1, pred |-> {}, status |-> "pending"] ) @@
-  4 :>
-      ( 0 :> [ts |-> 0, pred |-> {}, status |-> "recovery-notseen"] @@
-        1 :> [ts |-> 1, pred |-> {}, status |-> "pending"] ) )
-/\  propose = (<<0, 0>> :> 1 @@ <<1, 0>> :> 1)
-/\  recover = {<<0, 1>>}
-/\  retry = <<>>
-/\  stable = <<[ts |-> 1, pred |-> {}]>>
-
-
-Step5 == <<0,1>> \in DOMAIN propose /\ propose[<<0,1>>] = 2
-    
-Constraint5 ==
-    /\  DOMAIN retry = {}
-    /\  recover = {<<0, 1>>}
-    /\  DOMAIN propose \subseteq {<<0,0>>, <<1,0>>, <<0,1>>}
-
-AConstraint5 ==
-    /\  estimate[0]' = estimate[0] /\ ballot[0]' = ballot[0]
-    
-State5 ==
-/\  ballot = ( 0 :> (0 :> 0 @@ 1 :> 0) @@
-  1 :> (0 :> 1 @@ 1 :> 0) @@
-  2 :> (0 :> 1 @@ 1 :> 0) @@
-  3 :> (0 :> 1 @@ 1 :> 0) @@
-  4 :> (0 :> 1 @@ 1 :> 0) )
-/\  estimate = ( 0 :>
-      ( 0 :> [ts |-> 2, pred |-> 1..1, status |-> "rejected"] @@
-        1 :> [ts |-> 1, pred |-> {}, status |-> "stable"] ) @@
-  1 :> (0 :> [ts |-> 0, pred |-> {}, status |-> "recovery-notseen"]) @@
-  2 :>
-      ( 0 :> [ts |-> 0, pred |-> {}, status |-> "recovery-notseen"] @@
-        1 :> [ts |-> 1, pred |-> {}, status |-> "pending"] ) @@
-  3 :>
-      ( 0 :> [ts |-> 0, pred |-> {}, status |-> "recovery-notseen"] @@
-        1 :> [ts |-> 1, pred |-> {}, status |-> "pending"] ) @@
-  4 :>
-      ( 0 :> [ts |-> 0, pred |-> {}, status |-> "recovery-notseen"] @@
-        1 :> [ts |-> 1, pred |-> {}, status |-> "pending"] ) )
-/\  propose = (<<0, 0>> :> 1 @@ <<0, 1>> :> 2 @@ <<1, 0>> :> 1)
-/\  recover = {<<0, 1>>}
-/\  retry = <<>>
-/\  stable = <<[ts |-> 1, pred |-> {}]>>
-
-
-Step6 == \E q \in FastQuorum : 
-    /\  \A p \in q : 0 \in DOMAIN estimate[p] /\ estimate[p][0].status = "pending"
-    /\  0 \notin q
-
-AConstraint6 ==
-    /\  estimate[0]' = estimate[0] /\ ballot[0]' = ballot[0]
-    
-Constraint6 ==
-    /\  DOMAIN retry = {}
-    /\  recover = {<<0, 1>>}
-    /\  DOMAIN propose \subseteq {<<0,0>>, <<1,0>>, <<0,1>>}
-    /\  Cardinality(DOMAIN stable) = 1
-    
-State6 ==
-/\  ballot = ( 0 :> (0 :> 0 @@ 1 :> 0) @@
-  1 :> (0 :> 1 @@ 1 :> 0) @@
-  2 :> (0 :> 1 @@ 1 :> 0) @@
-  3 :> (0 :> 1 @@ 1 :> 0) @@
-  4 :> (0 :> 1 @@ 1 :> 0) )
-/\  estimate = ( 0 :>
-      ( 0 :> [ts |-> 2, pred |-> 1..1, status |-> "rejected"] @@
-        1 :> [ts |-> 1, pred |-> {}, status |-> "stable"] ) @@
-  1 :> (0 :> [ts |-> 2, pred |-> {0}, status |-> "pending"]) @@
-  2 :>
-      ( 0 :> [ts |-> 2, pred |-> {0, 1}, status |-> "pending"] @@
-        1 :> [ts |-> 1, pred |-> {}, status |-> "pending"] ) @@
-  3 :>
-      ( 0 :> [ts |-> 2, pred |-> {0, 1}, status |-> "pending"] @@
-        1 :> [ts |-> 1, pred |-> {}, status |-> "pending"] ) @@
-  4 :>
-      ( 0 :> [ts |-> 2, pred |-> {0, 1}, status |-> "pending"] @@
-        1 :> [ts |-> 1, pred |-> {}, status |-> "pending"] ) )
-/\  propose = (<<0, 0>> :> 1 @@ <<0, 1>> :> 2 @@ <<1, 0>> :> 1)
-/\  recover = {<<0, 1>>}
-/\  retry = <<>>
-/\  stable = <<[ts |-> 1, pred |-> {}]>>
-
-Step7 == 0 \in DOMAIN stable
-
-AConstraint7 ==
-    /\  estimate[0]' = estimate[0] /\ ballot[0]' = ballot[0]
-    
-Constraint7 ==
-    /\  DOMAIN retry = {}
-    /\  recover = {<<0, 1>>}
-    /\  DOMAIN propose \subseteq {<<0,0>>, <<1,0>>, <<0,1>>}
-    /\  Cardinality(DOMAIN stable) <= 2
-    
-State7 ==
-/\  ballot = ( 0 :> (0 :> 0 @@ 1 :> 0) @@
-  1 :> (0 :> 1 @@ 1 :> 0) @@
-  2 :> (0 :> 1 @@ 1 :> 0) @@
-  3 :> (0 :> 1 @@ 1 :> 0) @@
-  4 :> (0 :> 1 @@ 1 :> 0) )
-/\  estimate = ( 0 :>
-      ( 0 :> [ts |-> 2, pred |-> 1..1, status |-> "rejected"] @@
-        1 :> [ts |-> 1, pred |-> {}, status |-> "stable"] ) @@
-  1 :> (0 :> [ts |-> 2, pred |-> {0}, status |-> "pending"]) @@
-  2 :>
-      ( 0 :> [ts |-> 2, pred |-> {0, 1}, status |-> "pending"] @@
-        1 :> [ts |-> 1, pred |-> {}, status |-> "pending"] ) @@
-  3 :>
-      ( 0 :> [ts |-> 2, pred |-> {0, 1}, status |-> "pending"] @@
-        1 :> [ts |-> 1, pred |-> {}, status |-> "pending"] ) @@
-  4 :>
-      ( 0 :> [ts |-> 2, pred |-> {0, 1}, status |-> "pending"] @@
-        1 :> [ts |-> 1, pred |-> {}, status |-> "pending"] ) )
-/\  propose = (<<0, 0>> :> 1 @@ <<0, 1>> :> 2 @@ <<1, 0>> :> 1)
-/\  recover = {<<0, 1>>}
-/\  retry = <<>>
-/\  stable = (0 :> [ts |-> 2, pred |-> {0, 1}] @@ 1 :> [ts |-> 1, pred |-> {}])
-
-Step8 == recover = {<<0,1>>,<<0,2>>}
-
-State8 ==
-/\  ballot = ( 0 :> (0 :> 0 @@ 1 :> 0) @@
-  1 :> (0 :> 1 @@ 1 :> 0) @@
-  2 :> (0 :> 1 @@ 1 :> 0) @@
-  3 :> (0 :> 1 @@ 1 :> 0) @@
-  4 :> (0 :> 1 @@ 1 :> 0) )
-/\  estimate = ( 0 :>
-      ( 0 :> [ts |-> 2, pred |-> 1..1, status |-> "rejected"] @@
-        1 :> [ts |-> 1, pred |-> {}, status |-> "stable"] ) @@
-  1 :> (0 :> [ts |-> 2, pred |-> {0}, status |-> "pending"]) @@
-  2 :>
-      ( 0 :> [ts |-> 2, pred |-> {0, 1}, status |-> "pending"] @@
-        1 :> [ts |-> 1, pred |-> {}, status |-> "pending"] ) @@
-  3 :>
-      ( 0 :> [ts |-> 2, pred |-> {0, 1}, status |-> "pending"] @@
-        1 :> [ts |-> 1, pred |-> {}, status |-> "pending"] ) @@
-  4 :>
-      ( 0 :> [ts |-> 2, pred |-> {0, 1}, status |-> "pending"] @@
-        1 :> [ts |-> 1, pred |-> {}, status |-> "pending"] ) )
-/\  propose = (<<0, 0>> :> 1 @@ <<0, 1>> :> 2 @@ <<1, 0>> :> 1)
-/\  recover = {<<0, 1>>, <<0, 2>>}
-/\  retry = <<>>
-/\  stable = (0 :> [ts |-> 2, pred |-> {0, 1}] @@ 1 :> [ts |-> 1, pred |-> {}])
-
-Step9 == \E q \in FastQuorum : 
-    /\  \A p \in q : estimate[p][0].status \in RecoveryStatus
-    /\  4 \notin q
-
-Constraint9 ==
-    /\  DOMAIN retry = {}
-    /\  recover = {<<0, 1>> , <<0, 2>>}
-    /\  DOMAIN propose = {<<0,0>>, <<1,0>>, <<0,1>>}
-    /\  Cardinality(DOMAIN stable) <= 2
-    
-State9 ==
-/\  ballot = ( 0 :> (0 :> 2 @@ 1 :> 0) @@
-  1 :> (0 :> 2 @@ 1 :> 0) @@
-  2 :> (0 :> 2 @@ 1 :> 0) @@
-  3 :> (0 :> 2 @@ 1 :> 0) @@
-  4 :> (0 :> 1 @@ 1 :> 0) )
-/\  estimate = ( 0 :>
-      ( 0 :> [ts |-> 2, pred |-> 1..1, status |-> "recovery-rejected"] @@
-        1 :> [ts |-> 1, pred |-> {}, status |-> "stable"] ) @@
-  1 :> (0 :> [ts |-> 2, pred |-> {0}, status |-> "recovery-pending"]) @@
-  2 :>
-      ( 0 :> [ts |-> 2, pred |-> {0, 1}, status |-> "recovery-pending"] @@
-        1 :> [ts |-> 1, pred |-> {}, status |-> "pending"] ) @@
-  3 :>
-      ( 0 :> [ts |-> 2, pred |-> {0, 1}, status |-> "recovery-pending"] @@
-        1 :> [ts |-> 1, pred |-> {}, status |-> "pending"] ) @@
-  4 :>
-      ( 0 :> [ts |-> 2, pred |-> {0, 1}, status |-> "pending"] @@
-        1 :> [ts |-> 1, pred |-> {}, status |-> "pending"] ) )
-/\  propose = (<<0, 0>> :> 1 @@ <<0, 1>> :> 2 @@ <<1, 0>> :> 1)
-/\  recover = {<<0, 1>>, <<0, 2>>}
-/\  retry = <<>>
-/\  stable = (0 :> [ts |-> 2, pred |-> {0, 1}] @@ 1 :> [ts |-> 1, pred |-> {}])
-
-    
-Step10 == <<0,2>> \in DOMAIN propose /\ propose[<<0,2>>] = 3
-
-Constraint10 ==
-    /\  DOMAIN retry = {}
-    /\  recover = {<<0, 1>> , <<0, 2>>}
-    /\  DOMAIN propose \subseteq {<<0,0>>, <<1,0>>, <<0,1>>, <<0,2>>}
-    /\  Cardinality(DOMAIN stable) <= 2
-    
-AConstraint10 ==
-    /\  \A p \in P : estimate[p]' = estimate[p] /\ ballot[p]' = ballot[p]
-
-State10 ==
-/\  ballot = ( 0 :> (0 :> 2 @@ 1 :> 0) @@
-  1 :> (0 :> 2 @@ 1 :> 0) @@
-  2 :> (0 :> 2 @@ 1 :> 0) @@
-  3 :> (0 :> 2 @@ 1 :> 0) @@
-  4 :> (0 :> 1 @@ 1 :> 0) )
-/\  estimate = ( 0 :>
-      ( 0 :> [ts |-> 2, pred |-> 1..1, status |-> "recovery-rejected"] @@
-        1 :> [ts |-> 1, pred |-> {}, status |-> "stable"] ) @@
-  1 :> (0 :> [ts |-> 2, pred |-> {0}, status |-> "recovery-pending"]) @@
-  2 :>
-      ( 0 :> [ts |-> 2, pred |-> {0, 1}, status |-> "recovery-pending"] @@
-        1 :> [ts |-> 1, pred |-> {}, status |-> "pending"] ) @@
-  3 :>
-      ( 0 :> [ts |-> 2, pred |-> {0, 1}, status |-> "recovery-pending"] @@
-        1 :> [ts |-> 1, pred |-> {}, status |-> "pending"] ) @@
-  4 :>
-      ( 0 :> [ts |-> 2, pred |-> {0, 1}, status |-> "pending"] @@
-        1 :> [ts |-> 1, pred |-> {}, status |-> "pending"] ) )
-/\  propose = (<<0, 0>> :> 1 @@ <<0, 1>> :> 2 @@ <<0, 2>> :> 3 @@ <<1, 0>> :> 1)
-/\  recover = {<<0, 1>>, <<0, 2>>}
-/\  retry = <<>>
-/\  stable = (0 :> [ts |-> 2, pred |-> {0, 1}] @@ 1 :> [ts |-> 1, pred |-> {}])
-
-Step11 == \E q \in FastQuorum : 
-    /\  \A p \in q : 0 \in DOMAIN estimate[p] /\ estimate[p][0].status = "pending"
-    /\  4 \notin q
-
-Constraint11 ==
-    /\  DOMAIN retry = {}
-    /\  recover = {<<0, 1>> , <<0, 2>>}
-    /\  DOMAIN propose = {<<0,0>>, <<1,0>>, <<0,2>>, <<0,1>>}
-    /\  Cardinality(DOMAIN stable) <= 2
-
-State11 ==
-/\  ballot = ( 0 :> (0 :> 2 @@ 1 :> 0) @@
-  1 :> (0 :> 2 @@ 1 :> 0) @@
-  2 :> (0 :> 2 @@ 1 :> 0) @@
-  3 :> (0 :> 2 @@ 1 :> 0) @@
-  4 :> (0 :> 1 @@ 1 :> 0) )
-/\  estimate = ( 0 :>
-      ( 0 :> [ts |-> 3, pred |-> {0, 1}, status |-> "pending"] @@
-        1 :> [ts |-> 1, pred |-> {}, status |-> "stable"] ) @@
-  1 :> (0 :> [ts |-> 3, pred |-> {0}, status |-> "pending"]) @@
-  2 :>
-      ( 0 :> [ts |-> 3, pred |-> {0, 1}, status |-> "pending"] @@
-        1 :> [ts |-> 1, pred |-> {}, status |-> "pending"] ) @@
-  3 :>
-      ( 0 :> [ts |-> 3, pred |-> {0, 1}, status |-> "pending"] @@
-        1 :> [ts |-> 1, pred |-> {}, status |-> "pending"] ) @@
-  4 :>
-      ( 0 :> [ts |-> 2, pred |-> {0, 1}, status |-> "pending"] @@
-        1 :> [ts |-> 1, pred |-> {}, status |-> "pending"] ) )
-/\  propose = (<<0, 0>> :> 1 @@ <<0, 1>> :> 2 @@ <<0, 2>> :> 3 @@ <<1, 0>> :> 1)
-/\  recover = {<<0, 1>>, <<0, 2>>}
-/\  retry = <<>>
-/\  stable = (0 :> [ts |-> 2, pred |-> {0, 1}] @@ 1 :> [ts |-> 1, pred |-> {}])
-
-Step12 == stable[0].ts = 3
-
-\* Agreement is violated!
-State12 ==
-/\  ballot = ( 0 :> (0 :> 2 @@ 1 :> 0) @@
-  1 :> (0 :> 2 @@ 1 :> 0) @@
-  2 :> (0 :> 2 @@ 1 :> 0) @@
-  3 :> (0 :> 2 @@ 1 :> 0) @@
-  4 :> (0 :> 1 @@ 1 :> 0) )
-/\  estimate = ( 0 :>
-      ( 0 :> [ts |-> 3, pred |-> {0, 1}, status |-> "pending"] @@
-        1 :> [ts |-> 1, pred |-> {}, status |-> "stable"] ) @@
-  1 :> (0 :> [ts |-> 3, pred |-> {0}, status |-> "pending"]) @@
-  2 :>
-      ( 0 :> [ts |-> 3, pred |-> {0, 1}, status |-> "pending"] @@
-        1 :> [ts |-> 1, pred |-> {}, status |-> "pending"] ) @@
-  3 :>
-      ( 0 :> [ts |-> 3, pred |-> {0, 1}, status |-> "pending"] @@
-        1 :> [ts |-> 1, pred |-> {}, status |-> "pending"] ) @@
-  4 :>
-      ( 0 :> [ts |-> 2, pred |-> {0, 1}, status |-> "pending"] @@
-        1 :> [ts |-> 1, pred |-> {}, status |-> "pending"] ) )
-/\  propose = (<<0, 0>> :> 1 @@ <<0, 1>> :> 2 @@ <<0, 2>> :> 3 @@ <<1, 0>> :> 1)
-/\  recover = {<<0, 1>>, <<0, 2>>}
-/\  retry = <<>>
-/\  stable = (0 :> [ts |-> 3, pred |-> {0, 1}] @@ 1 :> [ts |-> 1, pred |-> {}])
+WeakAgreement == \A c \in C : \A s1, s2 \in DOMAIN stable : 
+    s1[1] = c /\ s2[1] = c => stable[s1].ts = stable[s2].ts
 
 =============================================================================
 \* Modification History
-\* Last modified Sat Mar 19 16:30:21 EDT 2016 by nano
+\* Last modified Sat Mar 19 18:03:50 EDT 2016 by nano
 \* Created Thu Mar 17 21:48:45 EDT 2016 by nano
