@@ -77,7 +77,7 @@ GT(c, xs) ==
         
         Blocks(p, c1, t1, c2) ==
             /\ Conflicts(p, c1, t1, c2)
-            /\ estimate[p][c2].status \notin {"stable","accepted"}
+            /\ estimate[p][c2].status \notin {"stable","accepted", "recovery-stable", "recovery-accepted"}
         
         Blocked(p, c, t) == \exists c2 \in DOMAIN estimate[p] : Blocks(p, c, t, c2)
         
@@ -104,7 +104,7 @@ GT(c, xs) ==
         with (c \in C) {
             with (bal = ballot[p][c], t = propose[<<c, ballot[p][c]>>]) {
                 when <<c, bal>> \in DOMAIN propose;
-                when ballot[p][c] = bal /\ c \notin DOMAIN estimate[p];
+                when ballot[p][c] = bal /\ (c \in DOMAIN estimate[p] => estimate[p][c].status \in RecoveryStatus);
                 when \neg Blocked(self, c, t);
                 when \forall c2 \in DOMAIN estimate[p] : \neg Conflicts(p, c, t, c2); \* There is no conflict.
                 with ( ds = CmdsWithLowerT(p, c, t) ) { 
@@ -120,7 +120,7 @@ GT(c, xs) ==
         with (c \in C) {
             with (bal = ballot[p][c], t = propose[<<c, ballot[p][c]>>]) {
                 when <<c, bal>> \in DOMAIN propose;
-                when ballot[p][c] = bal /\ c \notin DOMAIN estimate[p];
+                when ballot[p][c] = bal /\ (c \in DOMAIN estimate[p] => estimate[p][c].status \in RecoveryStatus);
                 when \neg Blocked(self, c, t);
                 when \exists c2 \in DOMAIN estimate[p] : Conflicts(p, c, t, c2); \* There is a conflict.
                 with (  ds = DOMAIN estimate[p]; t2 = GTReceived(p, c) ) {
@@ -177,7 +177,7 @@ GT(c, xs) ==
     macro LearnStable(p) {
         with (c \in DOMAIN stable \cap DOMAIN estimate[p]) {
             when estimate[p][c].ts = stable[c].ts /\ estimate[p][c].pred = stable[c].pred;
-            estimate := [estimate EXCEPT ![p] = [@ EXCEPT ![c] = [@ EXCEPT !.status = "stable"]]];
+            estimate := [estimate EXCEPT ![p] = [@ EXCEPT ![c] = [@ EXCEPT !.status = "stable"]]]; \* TODO: okay?
         }
     }
     
@@ -190,18 +190,41 @@ GT(c, xs) ==
     macro JoinBallot(p) {
         with (l \in recover; c = l[1], b = l[2]) {
             ballot := [ballot EXCEPT ![p] = [@ EXCEPT ![c] = b]];
-            if (c \in DOMAIN estimate[p] /\ estimate[p][c].status \notin RecoveryStatus) 
+            when c \in DOMAIN estimate[p] => estimate[p][c].status \notin RecoveryStatus;
+            if (c \in DOMAIN estimate[p]) 
                 estimate := [estimate EXCEPT ![p] = [@ EXCEPT ![c] = [@ EXCEPT !.status = "recovery-" \o estimate[p][c].status]]];
             else 
                 estimate := [estimate EXCEPT ![p] = @ ++ <<c, [ts |-> 0, pred |-> {}, status |-> "recovery-notseen"]>>];
         }
     }
     
-    macro  RecoverStable(c, b) {
-        with (q \in Quorum) {
-            when \A p2 \in q : ballot[p2][c] = b /\ c \in DOMAIN estimate[p2] /\ estimate[p2][c].status = "recovery-stable";
-            skip; 
-            \* TODO: useless here. Start with RecoveryAccepted.
+    macro  RecoverAccepted(c, b) {
+        with (q \in Quorum; p \in q) {
+            when ballot[p][c] = b /\ c \in DOMAIN estimate[p] /\ estimate[p][c].status = "recovery-accepted";
+            with (info = estimate[p][c]; t = info.ts; ds = info.pred) {
+                retry := retry ++ <<<<c,b>>, [ts |-> t, pred |-> ds]>>;
+            }
+        }
+    }
+    
+    macro  RecoverRejected(c, b) {
+        with (q \in Quorum; p \in q) {
+            when \A p2 \in q : \neg (ballot[p][c] = b /\ c \in DOMAIN estimate[p] /\ estimate[p][c].status = "recovery-accepted");
+            when ballot[p][c] = b /\ c \in DOMAIN estimate[p] /\ estimate[p][c].status = "recovery-rejected";
+            with (t \in Time) { \* use an arbitrary timestamp.
+                Propose(c, b, t); 
+            }
+        }
+    }
+        
+    macro  RecoverPending(c, b) {
+        with (q \in Quorum; p \in q) {
+            when \A p2 \in q : \neg (ballot[p][c] = b /\ c \in DOMAIN estimate[p] /\ estimate[p][c].status = "recovery-accepted");
+            when \A p2 \in q : \neg (ballot[p][c] = b /\ c \in DOMAIN estimate[p] /\ estimate[p][c].status = "recovery-rejected");
+            when ballot[p][c] = b /\ c \in DOMAIN estimate[p] /\ estimate[p][c].status = "recovery-pending";
+            with (t \in Time) {
+                Propose(c, b, estimate[p][c].ts); 
+            }
         }
     }
   
@@ -220,6 +243,12 @@ GT(c, xs) ==
                             SlowDecision(c, b);
                         } or {
                             StartBallot(c, b);
+                        } or {
+                            RecoverAccepted(c, b);
+                        } or {
+                            RecoverRejected(c, b);
+                        } or {
+                            RecoverPending(c, b);
                         }
                     }
                 }
@@ -245,7 +274,7 @@ GT(c, xs) ==
 
 *) 
 \* BEGIN TRANSLATION
-\* Label acc of process acc at line 228 col 17 changed to acc_
+\* Label acc of process acc at line 258 col 17 changed to acc_
 VARIABLES ballot, estimate, propose, stable, retry, recover
 
 (* define statement *)
@@ -255,7 +284,7 @@ Conflicts(p, c1, t1, c2) ==
 
 Blocks(p, c1, t1, c2) ==
     /\ Conflicts(p, c1, t1, c2)
-    /\ estimate[p][c2].status \notin {"stable","accepted"}
+    /\ estimate[p][c2].status \notin {"stable","accepted", "recovery-stable", "recovery-accepted"}
 
 Blocked(p, c, t) == \exists c2 \in DOMAIN estimate[p] : Blocks(p, c, t, c2)
 
@@ -310,13 +339,38 @@ leader(self) == /\ LET c == self[1] IN
                        \/ /\ b > 0
                           /\ recover' = (recover \cup {<<c,b>>})
                           /\ UNCHANGED <<propose, stable, retry>>
+                       \/ /\ \E q \in Quorum:
+                               \E p \in q:
+                                 /\ ballot[p][c] = b /\ c \in DOMAIN estimate[p] /\ estimate[p][c].status = "recovery-accepted"
+                                 /\ LET info == estimate[p][c] IN
+                                      LET t == info.ts IN
+                                        LET ds == info.pred IN
+                                          retry' = retry ++ <<<<c,b>>, [ts |-> t, pred |-> ds]>>
+                          /\ UNCHANGED <<propose, stable, recover>>
+                       \/ /\ \E q \in Quorum:
+                               \E p \in q:
+                                 /\ \A p2 \in q : \neg (ballot[p][c] = b /\ c \in DOMAIN estimate[p] /\ estimate[p][c].status = "recovery-accepted")
+                                 /\ ballot[p][c] = b /\ c \in DOMAIN estimate[p] /\ estimate[p][c].status = "recovery-rejected"
+                                 /\ \E t \in Time:
+                                      /\ \neg <<c,b>> \in DOMAIN propose
+                                      /\ propose' = propose ++ <<<<c,b>>, t>>
+                          /\ UNCHANGED <<stable, retry, recover>>
+                       \/ /\ \E q \in Quorum:
+                               \E p \in q:
+                                 /\ \A p2 \in q : \neg (ballot[p][c] = b /\ c \in DOMAIN estimate[p] /\ estimate[p][c].status = "recovery-accepted")
+                                 /\ \A p2 \in q : \neg (ballot[p][c] = b /\ c \in DOMAIN estimate[p] /\ estimate[p][c].status = "recovery-rejected")
+                                 /\ ballot[p][c] = b /\ c \in DOMAIN estimate[p] /\ estimate[p][c].status = "recovery-pending"
+                                 /\ \E t \in Time:
+                                      /\ \neg <<c,b>> \in DOMAIN propose
+                                      /\ propose' = propose ++ <<<<c,b>>, (estimate[p][c].ts)>>
+                          /\ UNCHANGED <<stable, retry, recover>>
                 /\ UNCHANGED << ballot, estimate >>
 
 acc(self) == /\ \/ /\ \E c \in C:
                         LET bal == ballot[self][c] IN
                           LET t == propose[<<c, ballot[self][c]>>] IN
                             /\ <<c, bal>> \in DOMAIN propose
-                            /\ ballot[self][c] = bal /\ c \notin DOMAIN estimate[self]
+                            /\ ballot[self][c] = bal /\ (c \in DOMAIN estimate[self] => estimate[self][c].status \in RecoveryStatus)
                             /\ \neg Blocked(self, c, t)
                             /\ \forall c2 \in DOMAIN estimate[self] : \neg Conflicts(self, c, t, c2)
                             /\ LET ds == CmdsWithLowerT(self, c, t) IN
@@ -326,7 +380,7 @@ acc(self) == /\ \/ /\ \E c \in C:
                         LET bal == ballot[self][c] IN
                           LET t == propose[<<c, ballot[self][c]>>] IN
                             /\ <<c, bal>> \in DOMAIN propose
-                            /\ ballot[self][c] = bal /\ c \notin DOMAIN estimate[self]
+                            /\ ballot[self][c] = bal /\ (c \in DOMAIN estimate[self] => estimate[self][c].status \in RecoveryStatus)
                             /\ \neg Blocked(self, c, t)
                             /\ \exists c2 \in DOMAIN estimate[self] : Conflicts(self, c, t, c2)
                             /\ LET ds == DOMAIN estimate[self] IN
@@ -350,7 +404,8 @@ acc(self) == /\ \/ /\ \E c \in C:
                         LET c == l[1] IN
                           LET b == l[2] IN
                             /\ ballot' = [ballot EXCEPT ![self] = [@ EXCEPT ![c] = b]]
-                            /\ IF c \in DOMAIN estimate[self] /\ estimate[self][c].status \notin RecoveryStatus
+                            /\ c \in DOMAIN estimate[self] => estimate[self][c].status \notin RecoveryStatus
+                            /\ IF c \in DOMAIN estimate[self]
                                   THEN /\ estimate' = [estimate EXCEPT ![self] = [@ EXCEPT ![c] = [@ EXCEPT !.status = "recovery-" \o estimate[self][c].status]]]
                                   ELSE /\ estimate' = [estimate EXCEPT ![self] = @ ++ <<c, [ts |-> 0, pred |-> {}, status |-> "recovery-notseen"]>>]
              /\ UNCHANGED << propose, stable, retry, recover >>
@@ -387,5 +442,5 @@ Agreement == \A c1,c2 \in DOMAIN stable : c1 # c2 /\ <<c1, stable[c1].ts>> \prec
 
 =============================================================================
 \* Modification History
-\* Last modified Fri Mar 18 19:02:43 EDT 2016 by nano
+\* Last modified Sat Mar 19 00:21:07 EDT 2016 by nano
 \* Created Thu Mar 17 21:48:45 EDT 2016 by nano
