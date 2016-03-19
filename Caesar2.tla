@@ -205,7 +205,7 @@ GTE(c, xs) ==
             when c \in DOMAIN estimate[p] => estimate[p][c].status \notin RecoveryStatus;
             if (c \in DOMAIN estimate[p]) 
                 estimate := [estimate EXCEPT ![p] = [@ EXCEPT ![c] = [@ EXCEPT !.status = "recovery-" \o estimate[p][c].status]]];
-            else 
+            else \* That's not correct: we cannot add the command to the domain of estimate here, or we would need to introduce the waiting condition.
                 estimate := [estimate EXCEPT ![p] = @ ++ <<c, [ts |-> 0, pred |-> {}, status |-> "recovery-notseen"]>>];
         }
     }
@@ -246,7 +246,8 @@ GTE(c, xs) ==
         }
     }
     
-    macro  RecoverNotSeen(c, b) { 
+    \* here we have a problem: we cannot include a notseen command in the deps of other commands..
+    macro  RecoverNotSeen(c, b) {
         with (q \in Quorum; p \in q) {
             when \A p2 \in q : ballot[p2][c] = b;
             when \A p2 \in q : \neg (ballot[p][c] = b /\ c \in DOMAIN estimate[p] 
@@ -306,7 +307,7 @@ GTE(c, xs) ==
 
 *) 
 \* BEGIN TRANSLATION
-\* Label acc of process acc at line 290 col 17 changed to acc_
+\* Label acc of process acc at line 291 col 17 changed to acc_
 VARIABLES ballot, estimate, propose, stable, retry, recover
 
 (* define statement *)
@@ -534,5 +535,5 @@ WeakAgreement == \A c \in C : \A s1, s2 \in DOMAIN stable :
 
 =============================================================================
 \* Modification History
-\* Last modified Sat Mar 19 18:03:50 EDT 2016 by nano
+\* Last modified Sat Mar 19 18:15:21 EDT 2016 by nano
 \* Created Thu Mar 17 21:48:45 EDT 2016 by nano
