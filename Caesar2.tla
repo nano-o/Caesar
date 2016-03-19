@@ -198,6 +198,8 @@ GT(c, xs) ==
         }
     }
     
+    \* TODO: in the recovery we should use only the information of the highest ballot among the quorum received! 
+    
     macro  RecoverAccepted(c, b) {
         with (q \in Quorum; p \in q) {
             when ballot[p][c] = b /\ c \in DOMAIN estimate[p] /\ estimate[p][c].status = "recovery-accepted";
@@ -274,7 +276,7 @@ GT(c, xs) ==
 
 *) 
 \* BEGIN TRANSLATION
-\* Label acc of process acc at line 258 col 17 changed to acc_
+\* Label acc of process acc at line 260 col 17 changed to acc_
 VARIABLES ballot, estimate, propose, stable, retry, recover
 
 (* define statement *)
@@ -442,5 +444,5 @@ Agreement == \A c1,c2 \in DOMAIN stable : c1 # c2 /\ <<c1, stable[c1].ts>> \prec
 
 =============================================================================
 \* Modification History
-\* Last modified Sat Mar 19 00:21:07 EDT 2016 by nano
+\* Last modified Sat Mar 19 00:37:41 EDT 2016 by nano
 \* Created Thu Mar 17 21:48:45 EDT 2016 by nano
