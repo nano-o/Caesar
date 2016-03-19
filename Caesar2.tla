@@ -205,6 +205,7 @@ GTE(c, xs) ==
             when c \in DOMAIN estimate[p] => estimate[p][c].status \notin RecoveryStatus;
             if (c \in DOMAIN estimate[p]) 
                 estimate := [estimate EXCEPT ![p] = [@ EXCEPT ![c] = [@ EXCEPT !.status = "recovery-" \o estimate[p][c].status]]];
+            \* Do not add c to the domain of estimate if it has not been seen, as otherwise we would need to respect the waiting condition.
         }
     }
     
@@ -531,5 +532,5 @@ WeakAgreement == \A c \in C : \A s1, s2 \in DOMAIN stable :
 
 =============================================================================
 \* Modification History
-\* Last modified Sat Mar 19 18:16:26 EDT 2016 by nano
+\* Last modified Sat Mar 19 18:18:12 EDT 2016 by nano
 \* Created Thu Mar 17 21:48:45 EDT 2016 by nano
