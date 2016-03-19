@@ -210,6 +210,7 @@ GTE(c, xs) ==
     }
     
     \* TODO: in the recovery we should use only the information of the highest ballot among the quorum received! 
+    \* For that we also need to know the last ballot in which an acceptor participated prior to joining its current ballot.
     
     macro  RecoverAccepted(c, b) {
         with (q \in Quorum; p \in q) {
@@ -304,7 +305,7 @@ GTE(c, xs) ==
 
 *) 
 \* BEGIN TRANSLATION
-\* Label acc of process acc at line 287 col 17 changed to acc_
+\* Label acc of process acc at line 288 col 17 changed to acc_
 VARIABLES ballot, estimate, propose, stable, retry, recover
 
 (* define statement *)
@@ -496,9 +497,8 @@ GraphInvariant == \A c1,c2 \in DOMAIN stable : c1 # c2 /\ <<c1, stable[c1].ts>> 
 (***************************************************************************)
 
 (***************************************************************************)
-(* A command is executable if all its dependencies which have a lower      *)
-(* timestamp are also executable.  Since no two commands can have the same *)
-(* timestamp, the recursion is well founded.                               *)
+(* A command is executable if all its dependencies which have strictly     *)
+(* lower timestamp are also executable.                                    *)
 (***************************************************************************)
 RECURSIVE Executable(_)
 Executable(s) == 
@@ -532,5 +532,5 @@ WeakAgreement == \A c \in C : \A s1, s2 \in DOMAIN stable :
 
 =============================================================================
 \* Modification History
-\* Last modified Sat Mar 19 18:18:12 EDT 2016 by nano
+\* Last modified Sat Mar 19 18:24:13 EDT 2016 by nano
 \* Created Thu Mar 17 21:48:45 EDT 2016 by nano
