@@ -72,7 +72,7 @@ GTE(c, xs) ==
         ballot = [p \in P |-> [c \in C |-> 0]], \* map an acceptor p to a command c to a ballot b, indicating that the acceptor p is in ballot b for command c.
         estimate = [p \in P |-> <<>>], \* maps an acceptor p and a command c to the estimate of acceptor p for command c in ballot ballot[p][c].
         propose = <<>>, \* maps a pair <<c,b>> to a timestamp t, indicating that the proposal for command c in ballot b is timestamp t.
-        stable = <<>>, \* maps a c to a set of dependencies ds and a timestamp t, indicating that c has been committed with timestamp t and dependencies ds. 
+        stable = <<>>, \* maps a command c to a set of dependencies ds and a timestamp t, indicating that c has been committed with timestamp t and dependencies ds. 
         retry = <<>>, \* maps a pair <<c,b>> to a set of dependencies ds and a timestamp t, indicating that c is to be retried with timestamp t and dependencies ds.
         recover = {} \* a set of pairs <<c,b>>. When <<c,v>> \in recover, it means that start-recovery messages have been sent for c in ballot b.  
 
@@ -211,6 +211,9 @@ GTE(c, xs) ==
     
     macro  RecoverAccepted(c, b) {
         with (q \in Quorum; p \in q) {
+            when \A p2 \in q : ballot[p2][c] = b; 
+            when \A p2 \in q : \neg (ballot[p][c] = b /\ c \in DOMAIN estimate[p] 
+                /\ estimate[p][c].status = "recovery-stable");
             when ballot[p][c] = b /\ c \in DOMAIN estimate[p] /\ estimate[p][c].status = "recovery-accepted";
             with (info = estimate[p][c]; t = info.ts; ds = info.pred) {
                 retry := retry ++ <<<<c,b>>, [ts |-> t, pred |-> ds]>>;
@@ -219,8 +222,10 @@ GTE(c, xs) ==
     }
     
     macro  RecoverRejected(c, b) {
-        with (q \in Quorum; p \in q) { \* TODO: assert that no p2 \in q has c accepted or stable    .
-            when \A p2 \in q : \neg (ballot[p][c] = b /\ c \in DOMAIN estimate[p] /\ estimate[p][c].status = "recovery-accepted");
+        with (q \in Quorum; p \in q) { 
+            when \A p2 \in q : ballot[p2][c] = b;
+            when \A p2 \in q : \neg (ballot[p][c] = b /\ c \in DOMAIN estimate[p] 
+                /\ estimate[p][c].status \in {"recovery-accepted", "recovery-stable"});
             when ballot[p][c] = b /\ c \in DOMAIN estimate[p] /\ estimate[p][c].status = "recovery-rejected";
             with (t \in Time) { \* use an arbitrary timestamp.
                 Propose(c, b, t); 
@@ -228,20 +233,21 @@ GTE(c, xs) ==
         }
     }
         
-    macro  RecoverPending(c, b) { \* TODO: assert that every p2 \in q has c pending or not-seen, but p has it pending. 
+    macro  RecoverPending(c, b) {  
         with (q \in Quorum; p \in q) {
-            when \A p2 \in q : \neg (ballot[p][c] = b /\ c \in DOMAIN estimate[p] /\ estimate[p][c].status = "recovery-accepted");
-            when \A p2 \in q : \neg (ballot[p][c] = b /\ c \in DOMAIN estimate[p] /\ estimate[p][c].status = "recovery-rejected");
+            when \A p2 \in q : ballot[p2][c] = b;
+            when \A p2 \in q : \neg (ballot[p][c] = b /\ c \in DOMAIN estimate[p] 
+                /\ estimate[p][c].status \in {"recovery-accepted","recovery-rejected", "recovery-stable"});
             when ballot[p][c] = b /\ c \in DOMAIN estimate[p] /\ estimate[p][c].status = "recovery-pending";
             Propose(c, b, estimate[p][c].ts); 
         }
     }
     
-    macro  RecoverNotSeen(c, b) { \* TODO: just assert that the quorum has not seen c.
+    macro  RecoverNotSeen(c, b) { 
         with (q \in Quorum; p \in q) {
-            when \A p2 \in q : \neg (ballot[p][c] = b /\ c \in DOMAIN estimate[p] /\ estimate[p][c].status = "recovery-accepted");
-            when \A p2 \in q : \neg (ballot[p][c] = b /\ c \in DOMAIN estimate[p] /\ estimate[p][c].status = "recovery-rejected");
-            when \A p2 \in q : \neg (ballot[p][c] = b /\ c \in DOMAIN estimate[p] /\ estimate[p][c].status = "recovery-pending");
+            when \A p2 \in q : ballot[p2][c] = b;
+            when \A p2 \in q : \neg (ballot[p][c] = b /\ c \in DOMAIN estimate[p] 
+                /\ estimate[p][c].status = {"recovery-accepted","recovery-rejected", "recovery-pending", "recovery-stable"});
             when ballot[p][c] = b /\ c \in DOMAIN estimate[p] /\ estimate[p][c].status = "recovery-notseen";
             with (t \in Time) {
                 Propose(c, b, t); 
@@ -297,7 +303,7 @@ GTE(c, xs) ==
 
 *) 
 \* BEGIN TRANSLATION
-\* Label acc of process acc at line 281 col 17 changed to acc_
+\* Label acc of process acc at line 287 col 17 changed to acc_
 VARIABLES ballot, estimate, propose, stable, retry, recover
 
 (* define statement *)
@@ -365,6 +371,9 @@ leader(self) == /\ LET c == self[1] IN
                           /\ UNCHANGED <<propose, stable, retry>>
                        \/ /\ \E q \in Quorum:
                                \E p \in q:
+                                 /\ \A p2 \in q : ballot[p2][c] = b
+                                 /\  \A p2 \in q : \neg (ballot[p][c] = b /\ c \in DOMAIN estimate[p]
+                                    /\ estimate[p][c].status = "recovery-stable")
                                  /\ ballot[p][c] = b /\ c \in DOMAIN estimate[p] /\ estimate[p][c].status = "recovery-accepted"
                                  /\ LET info == estimate[p][c] IN
                                       LET t == info.ts IN
@@ -373,7 +382,9 @@ leader(self) == /\ LET c == self[1] IN
                           /\ UNCHANGED <<propose, stable, recover>>
                        \/ /\ \E q \in Quorum:
                                \E p \in q:
-                                 /\ \A p2 \in q : \neg (ballot[p][c] = b /\ c \in DOMAIN estimate[p] /\ estimate[p][c].status = "recovery-accepted")
+                                 /\ \A p2 \in q : ballot[p2][c] = b
+                                 /\  \A p2 \in q : \neg (ballot[p][c] = b /\ c \in DOMAIN estimate[p]
+                                    /\ estimate[p][c].status \in {"recovery-accepted", "recovery-stable"})
                                  /\ ballot[p][c] = b /\ c \in DOMAIN estimate[p] /\ estimate[p][c].status = "recovery-rejected"
                                  /\ \E t \in Time:
                                       /\ \neg <<c,b>> \in DOMAIN propose
@@ -381,17 +392,18 @@ leader(self) == /\ LET c == self[1] IN
                           /\ UNCHANGED <<stable, retry, recover>>
                        \/ /\ \E q \in Quorum:
                                \E p \in q:
-                                 /\ \A p2 \in q : \neg (ballot[p][c] = b /\ c \in DOMAIN estimate[p] /\ estimate[p][c].status = "recovery-accepted")
-                                 /\ \A p2 \in q : \neg (ballot[p][c] = b /\ c \in DOMAIN estimate[p] /\ estimate[p][c].status = "recovery-rejected")
+                                 /\ \A p2 \in q : ballot[p2][c] = b
+                                 /\  \A p2 \in q : \neg (ballot[p][c] = b /\ c \in DOMAIN estimate[p]
+                                    /\ estimate[p][c].status \in {"recovery-accepted","recovery-rejected", "recovery-stable"})
                                  /\ ballot[p][c] = b /\ c \in DOMAIN estimate[p] /\ estimate[p][c].status = "recovery-pending"
                                  /\ \neg <<c,b>> \in DOMAIN propose
                                  /\ propose' = propose ++ <<<<c,b>>, (estimate[p][c].ts)>>
                           /\ UNCHANGED <<stable, retry, recover>>
                        \/ /\ \E q \in Quorum:
                                \E p \in q:
-                                 /\ \A p2 \in q : \neg (ballot[p][c] = b /\ c \in DOMAIN estimate[p] /\ estimate[p][c].status = "recovery-accepted")
-                                 /\ \A p2 \in q : \neg (ballot[p][c] = b /\ c \in DOMAIN estimate[p] /\ estimate[p][c].status = "recovery-rejected")
-                                 /\ \A p2 \in q : \neg (ballot[p][c] = b /\ c \in DOMAIN estimate[p] /\ estimate[p][c].status = "recovery-pending")
+                                 /\ \A p2 \in q : ballot[p2][c] = b
+                                 /\  \A p2 \in q : \neg (ballot[p][c] = b /\ c \in DOMAIN estimate[p]
+                                    /\ estimate[p][c].status = {"recovery-accepted","recovery-rejected", "recovery-pending", "recovery-stable"})
                                  /\ ballot[p][c] = b /\ c \in DOMAIN estimate[p] /\ estimate[p][c].status = "recovery-notseen"
                                  /\ \E t \in Time:
                                       /\ \neg <<c,b>> \in DOMAIN propose
@@ -473,6 +485,17 @@ TypeInvariant ==
     
 Agreement == \A c1,c2 \in DOMAIN stable : c1 # c2 /\ <<c1, stable[c1].ts>> \prec <<c2, stable[c2].ts>> =>
     c1 \in stable[c2].pred
+
+(***************************************************************************)
+(* A trace showing a counter-example to the safety of the recovery         *)
+(* process.  It ends up with a command being made stable with two          *)
+(* different timestamps.  For that to happen we need 5 replicas, the       *)
+(* possiblity to propose with time 1, 2, or 3, at least 3 ballots, and at  *)
+(* least two commands.  In the first ballot c0 is rejected, fast-commited  *)
+(* in the second ballot, and fast committed in the third but with a        *)
+(* different timestamp, because of the rejected status from the first      *)
+(* ballot.                                                                 *)
+(***************************************************************************)
 
 Step1 == 
     /\ DOMAIN estimate[0] = {1} 
@@ -859,5 +882,5 @@ State12 ==
 
 =============================================================================
 \* Modification History
-\* Last modified Sat Mar 19 16:03:22 EDT 2016 by nano
+\* Last modified Sat Mar 19 16:30:21 EDT 2016 by nano
 \* Created Thu Mar 17 21:48:45 EDT 2016 by nano
