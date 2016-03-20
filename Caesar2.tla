@@ -1,6 +1,6 @@
 ------------------------------ MODULE Caesar2 ------------------------------
 
-EXTENDS Naturals, FiniteSets, TLC, Sequences
+EXTENDS Naturals, FiniteSets, TLC, Sequences, Integers
 
 (***************************************************************************)
 (* Adding a key-value mapping (kv[1] is the key, kv[2] the value) to a map *)
@@ -43,12 +43,19 @@ ThreeFourthQuorums == {Q \in SUBSET P : 4 * Cardinality(Q) > 3 * Cardinality(P)}
 
 
 (***************************************************************************)
-(* An ordering relation among pairs of the form <<c, timestamp>>           *)
+(* An ordering relation among pairs of the form <<c, timestamp>>.  Allows  *)
+(* to break ties between timestamps by also using the command to compute   *)
+(* the ordering.                                                           *)
 (***************************************************************************)
 ts1 \prec ts2 == 
     IF ts1[2] = ts2[2]
     THEN ts1[1] < ts2[1]
     ELSE ts1[2] < ts2[2] 
+
+(***************************************************************************)
+(* The maximum element in a set.                                           *)
+(***************************************************************************)
+Max(xs) == CHOOSE x \in xs : \A y \in xs : x >= y
 
 (***************************************************************************)
 (* A timestamp for c strictly greater than the max of the timstamps xs.    *)
@@ -69,38 +76,54 @@ GTE(c, xs) ==
 --algorithm Caesar {
 
     variables
-        ballot = [p \in P |-> [c \in C |-> 0]], \* map an acceptor p to a command c to a ballot b, indicating that the acceptor p is in ballot b for command c.
-        estimate = [p \in P |-> <<>>], \* maps an acceptor p and a command c to the estimate of acceptor p for command c in ballot ballot[p][c].
-        propose = <<>>, \* maps a pair <<c,b>> to a timestamp t, indicating that the proposal for command c in ballot b is timestamp t.
-        stable = <<>>, \* maps a command c and a ballot b to a set of dependencies ds and a timestamp t, indicating that c has been committed in ballot b with timestamp t and dependencies ds. 
-        retry = <<>>, \* maps a pair <<c,b>> to a set of dependencies ds and a timestamp t, indicating that c is to be retried with timestamp t and dependencies ds.
-        recover = {} \* a set of pairs <<c,b>>. When <<c,v>> \in recover, it means that start-recovery messages have been sent for c in ballot b.  
+        \* maps an acceptor p and a command c to a ballot b, indicating that the acceptor p is in ballot b for command c:
+        ballot = [p \in P |-> [c \in C |-> 0]],
+        \* maps an acceptor p and a command c to a map from ballot to estimate:
+        estimate = [p \in P |-> [c \in C |-> <<>>]],
+        \* maps a pair <<c,b>> to a timestamp t, indicating that the proposal for command c in ballot b is timestamp t:
+        propose = <<>>,
+        \* maps a pair <<c,b>> to a set of dependencies ds and a timestamp t, indicating that c has been committed in ballot b with timestamp t and dependencies ds: 
+        stable = <<>>,
+        \* maps a pair <<c,b>> to a timestamp t, indicating that c is to be retried in ballot b with timestamp t.
+        retry = <<>>
 
     define {
+    
+        SeenCmds(p) == {c \in C : DOMAIN estimate[p][c] # {}}
+        
+        SeenAt(c, b, p) == b \in DOMAIN estimate[p][c]
+        
+        LastBal(c, p) == LET bals == DOMAIN estimate[p][c] IN
+            IF bals # {}
+            THEN Max(bals)
+            ELSE -1
+        
+        MaxEstimate(c, p) == estimate[p][c][LastBal(c,p)]
+        
+        \* The timestamp found at p in the estimate for c in the highest ballot.
+        TimeStampOf(c, p) == MaxEstimate(c,p).ts
+        
+        TimeStamps(p) == {<<c, TimeStampOf(c,p)>> : c \in SeenCmds(p)}
+        
+        CmdsWithLowerT(p, c, t) == {c2 \in SeenCmds(p) : <<c2, TimeStampOf(c2,p)>> \prec <<c,t>>}
+        
+        Pred(c, p) == MaxEstimate(c, p).pred
         
         Conflicts(p, c1, t1, c2) ==
-            /\ <<c1,t1>> \prec <<c2, estimate[p][c2].ts>>
-            /\ c1 \notin estimate[p][c2].pred
+            /\ <<c1,t1>> \prec <<c2, TimeStampOf(c2,p)>>
+            /\ c1 \notin Pred(c2,p)
         
         Blocks(p, c1, t1, c2) ==
             /\ Conflicts(p, c1, t1, c2)
-            /\ estimate[p][c2].status \notin {"stable","accepted", "recovery-stable", "recovery-accepted"}
+            /\ MaxEstimate(c2,p).status \notin {"stable","accepted"}
         
-        Blocked(p, c, t) == \exists c2 \in DOMAIN estimate[p] : Blocks(p, c, t, c2)
-        
-        \* A timestamp (of the form <<c,t>>) greater than the greatest timestamp seen by p. 
-        GTReceived(p, c) == 
-            LET ts == {<<c2, estimate[p][c2].ts>> : c2 \in DOMAIN estimate[p]}
-            IN GT(c, ts)
-        
-        CmdsWithLowerT(p, c, t) == {c2 \in DOMAIN estimate[p] : <<c2, estimate[p][c2].ts>> \prec <<c,t>>}
-        
-        RecoveryStatus == {"recovery-pending", "recovery-rejected", "recovery-stable", "recovery-accepted"}
+        Blocked(p, c, t) == \exists c2 \in SeenCmds(p) : Blocks(p, c, t, c2)
         
         }
  
-    \* Models making a proposal in a ballot.
+    \* Models a the leader of ballot b for command c making a proposal.
     macro Propose(c, b, t) {
+        assert b \in Ballot /\ t \in Nat /\ c \in C;
         \* has not been proposed before in this ballot:
         when \neg <<c,b>> \in DOMAIN propose;
         propose := propose ++ <<<<c,b>>, t>>
@@ -108,15 +131,15 @@ GTE(c, xs) ==
 
     \* Models replying to a proposal with an ACK message.  
     macro AckPropose(p) {
-        with (c \in C; bal = ballot[p][c]) {
-            when <<c, bal>> \in DOMAIN propose;
-            with (t = propose[<<c, ballot[p][c]>>]) {
-                when c \in DOMAIN estimate[p] => estimate[p][c].status \in RecoveryStatus;
-                when \neg Blocked(self, c, t);
-                when \forall c2 \in DOMAIN estimate[p] : \neg Conflicts(p, c, t, c2); \* There is no conflict.
-                with ( ds = CmdsWithLowerT(p, c, t) ) { 
+        with (c \in C; bal = ballot[p][c]) { 
+            when <<c, bal>> \in DOMAIN propose; \* Only reply for a proposal in the current ballot.
+            with (t = propose[<<c, bal>>]) {
+                when LastBal(c,p) < bal; \* p has not participated yet in this ballot.
+                when \neg Blocked(self, c, t); \* No higher-timestamped command is blocking c.
+                when \forall c2 \in SeenCmds(p) : \neg Conflicts(p, c, t, c2); \* There is no conflict.
+                with ( ds = CmdsWithLowerT(p, c, t) ) { \* Collect all commands with a lower timestamp.
                   \* Add the command to the local estimate:
-                  estimate := [estimate EXCEPT ![p] = @ ++ <<c, [ts |-> t, status |-> "pending", pred |-> ds]>>];
+                  estimate := [estimate EXCEPT ![p] = [@ EXCEPT ![c] = @ ++ <<bal, [ts |-> t, status |-> "pending", pred |-> ds]>>]];
                 }
             }
         }
@@ -124,15 +147,15 @@ GTE(c, xs) ==
     
     \* Models replying to a proposal with an ACK message.  
     macro RejectPropose(p) {
-        with (c \in C; bal = ballot[p][c]) {
-            when <<c, bal>> \in DOMAIN propose;
-            with (t = propose[<<c, ballot[p][c]>>]) {
-                when c \in DOMAIN estimate[p] => estimate[p][c].status \in RecoveryStatus;
-                when \neg Blocked(self, c, t);
-                when \exists c2 \in DOMAIN estimate[p] : Conflicts(p, c, t, c2); \* There is a conflict.
-                with (  ds = DOMAIN estimate[p]; t2 = GTReceived(p, c) ) {
+        with (c \in C; b = ballot[p][c]) {
+            when <<c, b>> \in DOMAIN propose; \* Only reply for a proposal in the current ballot.
+            with (t = propose[<<c, b>>]) {
+                when LastBal(c,p) < b; \* p has not participated yet in this ballot.
+                when \neg Blocked(self, c, t); \* No higher-timestamped command is blocking c.
+                when \exists c2 \in SeenCmds(p) : Conflicts(p, c, t, c2); \* There is a conflict.
+                with (  ds = SeenCmds(p); t2 = GT(c, TimeStamps(p)) ) { \* Collect all commands received so far; compute a strict upper bound on their timestamp.
                   \* Add the command to the local estimate:
-                  estimate := [estimate EXCEPT ![p] = @ ++ <<c, [ts |-> t2[2], status |-> "rejected", pred |-> ds]>>];
+                  estimate := [estimate EXCEPT ![p] = [@ EXCEPT ![c] = @ ++ <<b, [ts |-> t2[2], status |-> "rejected", pred |-> ds]>>]];
                 }
             }
         }
@@ -141,30 +164,28 @@ GTE(c, xs) ==
     macro Retry(c, b) {
         with (q \in Quorum) {
             when <<c,b>> \notin DOMAIN retry;
-            when \A p2 \in q : ballot[p2][c] = b /\ c \in DOMAIN estimate[p2];
-            when \E p2 \in q : estimate[p2][c].status = "rejected";
-            with (ds = UNION {estimate[p2][c].pred : p2 \in q}, t = GTE(c, {<<c, estimate[p2][c].ts>> : p2 \in q})) {
-                retry := retry ++ <<<<c,b>>, [ts |-> t[2], pred |-> ds]>>;
+            when \A p2 \in q : SeenAt(c, b, p2); \* p2 has seen c in ballot b.
+            when \E p2 \in q : estimate[p2][c][b].status = "rejected";
+            with (ds = UNION {estimate[p2][c][b].pred : p2 \in q}, t = GTE(c, {<<c, estimate[p2][c][b].ts>> : p2 \in q})) {
+                retry := retry ++ <<<<c,b>>, t[2]>>;
             }
         }
     }
     
     macro RetryAck(p) {
-        with (c \in C) {
-            with (bal = ballot[p][c]) {
-                when <<c, bal>> \in DOMAIN retry;
-                when c \in DOMAIN estimate[p] => estimate[p][c].status \in {"pending", "rejected"};
-                with (info = retry[<<c, ballot[p][c]>>]; t = info.ts; ds = info.pred \cup CmdsWithLowerT(p, c, t) ) {
-                    estimate := [estimate EXCEPT ![p] = @ ++ <<c, [ts |-> t, status |-> "accepted", pred |-> ds]>>];
-                }
+        with (c \in C, b = ballot[p][c]) {
+            when <<c, b>> \in DOMAIN retry;
+            when b \in DOMAIN estimate[p][c] => estimate[p][c][b].status \in {"pending", "rejected"}; \* Only reply if p has not seen c in b or has it pending or rejected in b. 
+            with (t = retry[<<c, b>>]; ds = CmdsWithLowerT(p, c, t) ) {
+                estimate := [estimate EXCEPT ![p] = [@ EXCEPT ![c] = @ ++ <<b, [ts |-> t, status |-> "accepted", pred |-> ds]>>]];
             }
         }
     }
     
     macro FastDecision(c, b) {
         with (q \in FastQuorum) {
-            when \A p2 \in q : ballot[p2][c] = b /\ c \in DOMAIN estimate[p2] /\ estimate[p2][c].status = "pending";
-            with (  ds = UNION {estimate[p2][c].pred : p2 \in q} \ {c};
+            when \A p \in q : b \in DOMAIN estimate[p][c] /\ estimate[p][c][b].status = "pending";
+            with (  ds = UNION {estimate[p][c][b].pred : p \in q};
                     t = propose[<<c,b>>] ) {
                 stable := stable ++ <<<<c,b>>, [ts |-> t, pred |-> ds]>>;
             }
@@ -182,12 +203,10 @@ GTE(c, xs) ==
     }
     
     macro LearnStable(p) {
-        with (c \in C) {
-            with (b = ballot[p][c]) {
-                when <<c,b>> \in DOMAIN stable;
-                estimate := [estimate EXCEPT ![p] = 
-                    @ ++ <<c, stable[<<c,b>>] ++ <<"status", "stable">> >>];
-            }
+        with (c \in C, b = ballot[p][c]) {
+            when <<c,b>> \in DOMAIN stable;
+            estimate := [estimate EXCEPT ![p] = 
+                [@ EXCEPT ![c] = @ ++ <<b, stable[<<c,b>>] ++ <<"status", "stable">> >>]];
         }
     }
     
@@ -209,12 +228,12 @@ GTE(c, xs) ==
         }
     }
     
-    \* TODO: in the recovery we should use only the information of the highest ballot among the quorum received! 
+    \* TODO: in the recovery we should use only the information of the highest ballot among the quorum received!
     \* For that we also need to know the last ballot in which an acceptor participated prior to joining its current ballot.
     
     macro  RecoverAccepted(c, b) {
         with (q \in Quorum; p \in q) {
-            when \A p2 \in q : ballot[p2][c] = b; 
+            when \A p2 \in q : ballot[p2][c] = b;
             when \A p2 \in q : \neg (ballot[p][c] = b /\ c \in DOMAIN estimate[p] 
                 /\ estimate[p][c].status = "recovery-stable");
             when ballot[p][c] = b /\ c \in DOMAIN estimate[p] /\ estimate[p][c].status = "recovery-accepted";
@@ -246,11 +265,11 @@ GTE(c, xs) ==
         }
     }
     
-    macro  RecoverNotSeen(c, b) {
+    macro  RecoverNotSeenCmds(c, b) { \* TODO: something's wrong, but what?
         with (q \in Quorum; p \in q) {
             when \A p2 \in q : ballot[p2][c] = b;
             when <<c,b>> \in recover /\ c \notin DOMAIN estimate[p]; \* This tells us that p is in recovery mode but has not seen c before.
-            when \A p2 \in q : \neg (ballot[p][c] = b /\ c \in DOMAIN estimate[p] 
+            when \A p2 \in q : \neg (c \in DOMAIN estimate[p] 
                 /\ estimate[p][c].status \in {"recovery-accepted","recovery-rejected", "recovery-pending", "recovery-stable"});
             with (t \in Time) {
                 Propose(c, b, t); 
@@ -269,7 +288,7 @@ GTE(c, xs) ==
                             FastDecision(c, b);
                         } or {
                             Retry(c, b);
-                        } or {
+                        } (* or {
                             SlowDecision(c, b);
                         } or {
                             StartBallot(c, b);
@@ -280,8 +299,8 @@ GTE(c, xs) ==
                         } or {
                             RecoverPending(c, b);
                         } or {
-                            RecoverNotSeen(c, b);
-                        }
+                            RecoverNotSeenCmds(c, b);
+                        } *)
                     }
                 }
     }
@@ -296,9 +315,9 @@ GTE(c, xs) ==
                         LearnStable(self);
                     } or {
                         RetryAck(self);
-                    } or {
+                    } (* or {
                         JoinBallot(self);
-                    }
+                    } *)
                 }
     }
     
@@ -306,161 +325,108 @@ GTE(c, xs) ==
 
 *) 
 \* BEGIN TRANSLATION
-\* Label acc of process acc at line 290 col 17 changed to acc_
-VARIABLES ballot, estimate, propose, stable, retry, recover
+\* Label acc of process acc at line 309 col 17 changed to acc_
+VARIABLES ballot, estimate, propose, stable, retry
 
 (* define statement *)
+SeenCmds(p) == {c \in C : DOMAIN estimate[p][c] # {}}
+
+SeenAt(c, b, p) == b \in DOMAIN estimate[p][c]
+
+LastBal(c, p) == LET bals == DOMAIN estimate[p][c] IN
+    IF bals # {}
+    THEN Max(bals)
+    ELSE -1
+
+MaxEstimate(c, p) == estimate[p][c][LastBal(c,p)]
+
+
+TimeStampOf(c, p) == MaxEstimate(c,p).ts
+
+TimeStamps(p) == {<<c, TimeStampOf(c,p)>> : c \in SeenCmds(p)}
+
+CmdsWithLowerT(p, c, t) == {c2 \in SeenCmds(p) : <<c2, TimeStampOf(c2,p)>> \prec <<c,t>>}
+
+Pred(c, p) == MaxEstimate(c, p).pred
+
 Conflicts(p, c1, t1, c2) ==
-    /\ <<c1,t1>> \prec <<c2, estimate[p][c2].ts>>
-    /\ c1 \notin estimate[p][c2].pred
+    /\ <<c1,t1>> \prec <<c2, TimeStampOf(c2,p)>>
+    /\ c1 \notin Pred(c2,p)
 
 Blocks(p, c1, t1, c2) ==
     /\ Conflicts(p, c1, t1, c2)
-    /\ estimate[p][c2].status \notin {"stable","accepted", "recovery-stable", "recovery-accepted"}
+    /\ MaxEstimate(c2,p).status \notin {"stable","accepted"}
 
-Blocked(p, c, t) == \exists c2 \in DOMAIN estimate[p] : Blocks(p, c, t, c2)
-
-
-GTReceived(p, c) ==
-    LET ts == {<<c2, estimate[p][c2].ts>> : c2 \in DOMAIN estimate[p]}
-    IN GT(c, ts)
-
-CmdsWithLowerT(p, c, t) == {c2 \in DOMAIN estimate[p] : <<c2, estimate[p][c2].ts>> \prec <<c,t>>}
-
-RecoveryStatus == {"recovery-pending", "recovery-rejected", "recovery-stable", "recovery-accepted"}
+Blocked(p, c, t) == \exists c2 \in SeenCmds(p) : Blocks(p, c, t, c2)
 
 
-vars == << ballot, estimate, propose, stable, retry, recover >>
+vars == << ballot, estimate, propose, stable, retry >>
 
 ProcSet == (C \times Ballot) \cup (P)
 
 Init == (* Global variables *)
         /\ ballot = [p \in P |-> [c \in C |-> 0]]
-        /\ estimate = [p \in P |-> <<>>]
+        /\ estimate = [p \in P |-> [c \in C |-> <<>>]]
         /\ propose = <<>>
         /\ stable = <<>>
         /\ retry = <<>>
-        /\ recover = {}
 
 leader(self) == /\ LET c == self[1] IN
                      LET b == self[2] IN
                        \/ /\ \E t \in Time:
+                               /\ Assert(0 \in Ballot /\ t \in Nat /\ c \in C, 
+                                         "Failure of assertion at line 126, column 9 of macro called at line 285, column 33.")
                                /\ \neg <<c,0>> \in DOMAIN propose
                                /\ propose' = propose ++ <<<<c,0>>, t>>
-                          /\ UNCHANGED <<stable, retry, recover>>
+                          /\ UNCHANGED <<stable, retry>>
                        \/ /\ \E q \in FastQuorum:
-                               /\ \A p2 \in q : ballot[p2][c] = b /\ c \in DOMAIN estimate[p2] /\ estimate[p2][c].status = "pending"
-                               /\ LET ds == UNION {estimate[p2][c].pred : p2 \in q} \ {c} IN
+                               /\ \A p \in q : b \in DOMAIN estimate[p][c] /\ estimate[p][c][b].status = "pending"
+                               /\ LET ds == UNION {estimate[p][c][b].pred : p \in q} IN
                                     LET t == propose[<<c,b>>] IN
                                       stable' = stable ++ <<<<c,b>>, [ts |-> t, pred |-> ds]>>
-                          /\ UNCHANGED <<propose, retry, recover>>
+                          /\ UNCHANGED <<propose, retry>>
                        \/ /\ \E q \in Quorum:
                                /\ <<c,b>> \notin DOMAIN retry
-                               /\ \A p2 \in q : ballot[p2][c] = b /\ c \in DOMAIN estimate[p2]
-                               /\ \E p2 \in q : estimate[p2][c].status = "rejected"
-                               /\ LET ds == UNION {estimate[p2][c].pred : p2 \in q} IN
-                                    LET t == GTE(c, {<<c, estimate[p2][c].ts>> : p2 \in q}) IN
-                                      retry' = retry ++ <<<<c,b>>, [ts |-> t[2], pred |-> ds]>>
-                          /\ UNCHANGED <<propose, stable, recover>>
-                       \/ /\ \E q \in Quorum:
-                               /\ \A p2 \in q : ballot[p2][c] = b /\ c \in DOMAIN estimate[p2] /\ estimate[p2][c].status = "accepted"
-                               /\ LET ds == UNION {estimate[p2][c].pred : p2 \in q} \ {c} IN
-                                    LET t == retry[<<c,b>>].ts IN
-                                      stable' = stable ++ <<<<c,b>>, [ts |-> t, pred |-> ds]>>
-                          /\ UNCHANGED <<propose, retry, recover>>
-                       \/ /\ b > 0
-                          /\ \E b2 \in Ballot : <<c,b2>> \in DOMAIN propose
-                          /\ recover' = (recover \cup {<<c,b>>})
-                          /\ UNCHANGED <<propose, stable, retry>>
-                       \/ /\ \E q \in Quorum:
-                               \E p \in q:
-                                 /\ \A p2 \in q : ballot[p2][c] = b
-                                 /\  \A p2 \in q : \neg (ballot[p][c] = b /\ c \in DOMAIN estimate[p]
-                                    /\ estimate[p][c].status = "recovery-stable")
-                                 /\ ballot[p][c] = b /\ c \in DOMAIN estimate[p] /\ estimate[p][c].status = "recovery-accepted"
-                                 /\ LET info == estimate[p][c] IN
-                                      LET t == info.ts IN
-                                        LET ds == info.pred IN
-                                          retry' = retry ++ <<<<c,b>>, [ts |-> t, pred |-> ds]>>
-                          /\ UNCHANGED <<propose, stable, recover>>
-                       \/ /\ \E q \in Quorum:
-                               \E p \in q:
-                                 /\ \A p2 \in q : ballot[p2][c] = b
-                                 /\  \A p2 \in q : \neg (ballot[p][c] = b /\ c \in DOMAIN estimate[p]
-                                    /\ estimate[p][c].status \in {"recovery-accepted", "recovery-stable"})
-                                 /\ ballot[p][c] = b /\ c \in DOMAIN estimate[p] /\ estimate[p][c].status = "recovery-rejected"
-                                 /\ \E t \in Time:
-                                      /\ \neg <<c,b>> \in DOMAIN propose
-                                      /\ propose' = propose ++ <<<<c,b>>, t>>
-                          /\ UNCHANGED <<stable, retry, recover>>
-                       \/ /\ \E q \in Quorum:
-                               \E p \in q:
-                                 /\ \A p2 \in q : ballot[p2][c] = b
-                                 /\  \A p2 \in q : \neg (ballot[p][c] = b /\ c \in DOMAIN estimate[p]
-                                    /\ estimate[p][c].status \in {"recovery-accepted","recovery-rejected", "recovery-stable"})
-                                 /\ ballot[p][c] = b /\ c \in DOMAIN estimate[p] /\ estimate[p][c].status = "recovery-pending"
-                                 /\ \neg <<c,b>> \in DOMAIN propose
-                                 /\ propose' = propose ++ <<<<c,b>>, (estimate[p][c].ts)>>
-                          /\ UNCHANGED <<stable, retry, recover>>
-                       \/ /\ \E q \in Quorum:
-                               \E p \in q:
-                                 /\ \A p2 \in q : ballot[p2][c] = b
-                                 /\ <<c,b>> \in recover /\ c \notin DOMAIN estimate[p]
-                                 /\  \A p2 \in q : \neg (ballot[p][c] = b /\ c \in DOMAIN estimate[p]
-                                    /\ estimate[p][c].status \in {"recovery-accepted","recovery-rejected", "recovery-pending", "recovery-stable"})
-                                 /\ \E t \in Time:
-                                      /\ \neg <<c,b>> \in DOMAIN propose
-                                      /\ propose' = propose ++ <<<<c,b>>, t>>
-                          /\ UNCHANGED <<stable, retry, recover>>
+                               /\ \A p2 \in q : SeenAt(c, b, p2)
+                               /\ \E p2 \in q : estimate[p2][c][b].status = "rejected"
+                               /\ LET ds == UNION {estimate[p2][c][b].pred : p2 \in q} IN
+                                    LET t == GTE(c, {<<c, estimate[p2][c][b].ts>> : p2 \in q}) IN
+                                      retry' = retry ++ <<<<c,b>>, t[2]>>
+                          /\ UNCHANGED <<propose, stable>>
                 /\ UNCHANGED << ballot, estimate >>
 
 acc(self) == /\ \/ /\ \E c \in C:
                         LET bal == ballot[self][c] IN
                           /\ <<c, bal>> \in DOMAIN propose
-                          /\ LET t == propose[<<c, ballot[self][c]>>] IN
-                               /\ c \in DOMAIN estimate[self] => estimate[self][c].status \in RecoveryStatus
+                          /\ LET t == propose[<<c, bal>>] IN
+                               /\ LastBal(c,self) < bal
                                /\ \neg Blocked(self, c, t)
-                               /\ \forall c2 \in DOMAIN estimate[self] : \neg Conflicts(self, c, t, c2)
+                               /\ \forall c2 \in SeenCmds(self) : \neg Conflicts(self, c, t, c2)
                                /\ LET ds == CmdsWithLowerT(self, c, t) IN
-                                    estimate' = [estimate EXCEPT ![self] = @ ++ <<c, [ts |-> t, status |-> "pending", pred |-> ds]>>]
-                   /\ UNCHANGED ballot
+                                    estimate' = [estimate EXCEPT ![self] = [@ EXCEPT ![c] = @ ++ <<bal, [ts |-> t, status |-> "pending", pred |-> ds]>>]]
                 \/ /\ \E c \in C:
-                        LET bal == ballot[self][c] IN
-                          /\ <<c, bal>> \in DOMAIN propose
-                          /\ LET t == propose[<<c, ballot[self][c]>>] IN
-                               /\ c \in DOMAIN estimate[self] => estimate[self][c].status \in RecoveryStatus
+                        LET b == ballot[self][c] IN
+                          /\ <<c, b>> \in DOMAIN propose
+                          /\ LET t == propose[<<c, b>>] IN
+                               /\ LastBal(c,self) < b
                                /\ \neg Blocked(self, c, t)
-                               /\ \exists c2 \in DOMAIN estimate[self] : Conflicts(self, c, t, c2)
-                               /\ LET ds == DOMAIN estimate[self] IN
-                                    LET t2 == GTReceived(self, c) IN
-                                      estimate' = [estimate EXCEPT ![self] = @ ++ <<c, [ts |-> t2[2], status |-> "rejected", pred |-> ds]>>]
-                   /\ UNCHANGED ballot
+                               /\ \exists c2 \in SeenCmds(self) : Conflicts(self, c, t, c2)
+                               /\ LET ds == SeenCmds(self) IN
+                                    LET t2 == GT(c, TimeStamps(self)) IN
+                                      estimate' = [estimate EXCEPT ![self] = [@ EXCEPT ![c] = @ ++ <<b, [ts |-> t2[2], status |-> "rejected", pred |-> ds]>>]]
                 \/ /\ \E c \in C:
                         LET b == ballot[self][c] IN
                           /\ <<c,b>> \in DOMAIN stable
                           /\ estimate' =         [estimate EXCEPT ![self] =
-                                         @ ++ <<c, stable[<<c,b>>] ++ <<"status", "stable">> >>]
-                   /\ UNCHANGED ballot
+                                         [@ EXCEPT ![c] = @ ++ <<b, stable[<<c,b>>] ++ <<"status", "stable">> >>]]
                 \/ /\ \E c \in C:
-                        LET bal == ballot[self][c] IN
-                          /\ <<c, bal>> \in DOMAIN retry
-                          /\ c \in DOMAIN estimate[self] => estimate[self][c].status \in {"pending", "rejected"}
-                          /\ LET info == retry[<<c, ballot[self][c]>>] IN
-                               LET t == info.ts IN
-                                 LET ds == info.pred \cup CmdsWithLowerT(self, c, t) IN
-                                   estimate' = [estimate EXCEPT ![self] = @ ++ <<c, [ts |-> t, status |-> "accepted", pred |-> ds]>>]
-                   /\ UNCHANGED ballot
-                \/ /\ \E l \in recover:
-                        LET c == l[1] IN
-                          LET b == l[2] IN
-                            /\ b > ballot[self][c]
-                            /\ ballot' = [ballot EXCEPT ![self] = [@ EXCEPT ![c] = b]]
-                            /\ c \in DOMAIN estimate[self] => estimate[self][c].status \notin RecoveryStatus
-                            /\ IF c \in DOMAIN estimate[self]
-                                  THEN /\ estimate' = [estimate EXCEPT ![self] = [@ EXCEPT ![c] = [@ EXCEPT !.status = "recovery-" \o estimate[self][c].status]]]
-                                  ELSE /\ TRUE
-                                       /\ UNCHANGED estimate
-             /\ UNCHANGED << propose, stable, retry, recover >>
+                        LET b == ballot[self][c] IN
+                          /\ <<c, b>> \in DOMAIN retry
+                          /\ b \in DOMAIN estimate[self][c] => estimate[self][c][b].status \in {"pending", "rejected"}
+                          /\ LET t == retry[<<c, b>>] IN
+                               LET ds == CmdsWithLowerT(self, c, t) IN
+                                 estimate' = [estimate EXCEPT ![self] = [@ EXCEPT ![c] = @ ++ <<b, [ts |-> t, status |-> "accepted", pred |-> ds]>>]]
+             /\ UNCHANGED << ballot, propose, stable, retry >>
 
 Next == (\E self \in C \times Ballot: leader(self))
            \/ (\E self \in P: acc(self))
@@ -469,7 +435,7 @@ Spec == Init /\ [][Next]_vars
 
 \* END TRANSLATION
    
-Status == {"pending", "stable", "accepted", "rejected"} \cup RecoveryStatus
+Status == {"pending", "stable", "accepted", "rejected"}
 
 CmdInfo == [ts : Nat, pred : SUBSET C]
 CmdInfoWithStat == [ts : Nat, pred : SUBSET C, status: Status]
@@ -481,11 +447,15 @@ CmdInfoWithStat == [ts : Nat, pred : SUBSET C, status: Status]
 (***************************************************************************)
 TypeInvariant ==
     /\  \A p \in P, c \in C : ballot[p][c] \in Ballot
-    /\  \A p \in P : \E D \in SUBSET C : estimate[p] \in [D -> CmdInfoWithStat \union {<<>>}]
-    /\  \E D \in SUBSET (C \times Ballot) : propose \in [D -> Time]
-    /\  \E D \in SUBSET C : stable \in [D -> CmdInfo]
-    /\  \E D \in SUBSET (C \times Ballot) : retry \in [D -> CmdInfo]
-    /\  recover \in SUBSET (C \times (Ballot \ {0}))
+    /\  \A p \in P, c \in C : \E D \in SUBSET Ballot : estimate[p][c] \in [D -> CmdInfoWithStat]
+    /\  \E D \in SUBSET (C \times Ballot) : propose \in [D -> Nat]
+    /\  \E D \in SUBSET (C \times Ballot) : retry \in [D -> Nat]
+    /\  \E D \in SUBSET (C \times Ballot) : stable \in [D -> CmdInfo]
+    
+(***************************************************************************)
+(* A simple invariant.                                                     *)
+(***************************************************************************)
+Inv1 == \A p \in P : \A c \in C : ballot[p][c] >= LastBal(c,p)
 
 (***************************************************************************)
 (* This invariant must hold for the execution phase (not formalized here)  *)
@@ -534,5 +504,5 @@ WeakAgreement == \A c \in C : \A s1, s2 \in DOMAIN stable :
 
 =============================================================================
 \* Modification History
-\* Last modified Sat Mar 19 20:59:44 EDT 2016 by nano
+\* Last modified Sun Mar 20 13:18:36 EDT 2016 by nano
 \* Created Thu Mar 17 21:48:45 EDT 2016 by nano
