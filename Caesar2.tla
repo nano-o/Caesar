@@ -249,6 +249,7 @@ GTE(c, xs) ==
     macro  RecoverNotSeen(c, b) {
         with (q \in Quorum; p \in q) {
             when \A p2 \in q : ballot[p2][c] = b;
+            when <<c,b>> \in recover /\ c \notin DOMAIN estimate[p]; \* This tells us that p is in recovery mode but has not seen c before.
             when \A p2 \in q : \neg (ballot[p][c] = b /\ c \in DOMAIN estimate[p] 
                 /\ estimate[p][c].status \in {"recovery-accepted","recovery-rejected", "recovery-pending", "recovery-stable"});
             with (t \in Time) {
@@ -305,7 +306,7 @@ GTE(c, xs) ==
 
 *) 
 \* BEGIN TRANSLATION
-\* Label acc of process acc at line 288 col 17 changed to acc_
+\* Label acc of process acc at line 290 col 17 changed to acc_
 VARIABLES ballot, estimate, propose, stable, retry, recover
 
 (* define statement *)
@@ -404,6 +405,7 @@ leader(self) == /\ LET c == self[1] IN
                        \/ /\ \E q \in Quorum:
                                \E p \in q:
                                  /\ \A p2 \in q : ballot[p2][c] = b
+                                 /\ <<c,b>> \in recover /\ c \notin DOMAIN estimate[p]
                                  /\  \A p2 \in q : \neg (ballot[p][c] = b /\ c \in DOMAIN estimate[p]
                                     /\ estimate[p][c].status \in {"recovery-accepted","recovery-rejected", "recovery-pending", "recovery-stable"})
                                  /\ \E t \in Time:
@@ -532,5 +534,5 @@ WeakAgreement == \A c \in C : \A s1, s2 \in DOMAIN stable :
 
 =============================================================================
 \* Modification History
-\* Last modified Sat Mar 19 18:24:13 EDT 2016 by nano
+\* Last modified Sat Mar 19 20:59:44 EDT 2016 by nano
 \* Created Thu Mar 17 21:48:45 EDT 2016 by nano
