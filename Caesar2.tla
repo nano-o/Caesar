@@ -745,12 +745,6 @@ Spec == Init /\ [][Next]_vars
 THEOREM Spec => [](Agreement /\ GraphInvariant)
 
 (***************************************************************************)
-(* TODO: the pred set in the local estimates can be computed from the      *)
-(* domain of estimate and the timestamp of each command.  Thus, no need to *)
-(* explicitely carry it.                                                   *)
-(***************************************************************************)
-
-(***************************************************************************)
 (* Some comments.                                                          *)
 (*                                                                         *)
 (* For each command, a Paxos-like algorithm determines a timestamp and a   *)
@@ -767,5 +761,5 @@ THEOREM Spec => [](Agreement /\ GraphInvariant)
 
 =============================================================================
 \* Modification History
-\* Last modified Mon Mar 21 09:17:35 EDT 2016 by nano
+\* Last modified Mon Mar 21 09:18:36 EDT 2016 by nano
 \* Created Thu Mar 17 21:48:45 EDT 2016 by nano
