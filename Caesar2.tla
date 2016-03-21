@@ -291,7 +291,7 @@ GTE(c, xs) ==
     \* The leader triggers the slow path because it received a "rejected" response to its proposal. 
     macro RetryWhenRejected(c, b) {
         with (q \in Quorum) {
-            when <<c,b>> \notin DOMAIN retry;
+            when <<c,b>> \notin DOMAIN retry \cup DOMAIN stable;
             when \A p2 \in q : SeenAt(c, b, p2); \* p2 has seen c in ballot b.
             when \E p2 \in q : estimate[p2][c][b].status = "rejected";
             with (ds = UNION {estimate[p2][c][b].deps : p2 \in q}, 
@@ -305,10 +305,10 @@ GTE(c, xs) ==
     \* and it did not receive any "rejected" response to its proposal.
     macro RetryWhenTimeout(c, b) {
         with (q \in Quorum) {
-            when <<c,b>> \notin DOMAIN retry;
-            when \A p2 \in q : SeenAt(c, b, p2) /\ estimate[p2][c][b].status # "rejected";
+            when <<c,b>> \notin DOMAIN retry \cup DOMAIN stable;
+            when \A p2 \in q : SeenAt(c, b, p2) /\ estimate[p2][c][b].status = "accepted";
             with (ds = UNION {estimate[p2][c][b].deps : p2 \in q}, 
-                    t = GTE(c, {<<c, estimate[p2][c][b].ts>> : p2 \in q})) {
+                    t = GTE(c, {<<c, estimate[p2][c][b].ts>> : p2 \in q})) { \* greater than has no effet. Do we need strictly greater?
                 retry := retry ++ <<<<c,b>>, t[2]>>;
             }
         }
@@ -320,7 +320,7 @@ GTE(c, xs) ==
             \* Only reply if p has not seen c in b or has it pending or rejected in b:
             when b \in DOMAIN estimate[p][c] 
                 => estimate[p][c][b].status \in {"pending", "rejected"};  
-            with (t = retry[<<c, b>>]; ds = CmdsWithLowerT(p, c, t) ) {
+            with (t = retry[<<c, b>>]; ds = CmdsWithLowerT(p, c, t) \ {c}) {
                 estimate := [estimate EXCEPT ![p] = [@ EXCEPT ![c] = @ ++ 
                     <<b, [ts |-> t, status |-> "accepted", deps |-> ds]>>]];
             }
@@ -460,7 +460,7 @@ GTE(c, xs) ==
                         } or {
                             RecoverRejected(c, b);
                         } or {
-                            RecoverPending(c, b);
+                            skip; \* RecoverPending(c, b);
                         } or {
                             RecoverNotSeen(c, b);
                         }
@@ -655,7 +655,7 @@ leader(self) == /\ LET c == self[1] IN
                                       stable' = stable ++ <<<<c,b>>, [ts |-> t, deps |-> ds]>>
                           /\ UNCHANGED <<propose, retry, join>>
                        \/ /\ \E q \in Quorum:
-                               /\ <<c,b>> \notin DOMAIN retry
+                               /\ <<c,b>> \notin DOMAIN retry \cup DOMAIN stable
                                /\ \A p2 \in q : SeenAt(c, b, p2)
                                /\ \E p2 \in q : estimate[p2][c][b].status = "rejected"
                                /\ LET ds == UNION {estimate[p2][c][b].deps : p2 \in q} IN
@@ -663,8 +663,8 @@ leader(self) == /\ LET c == self[1] IN
                                       retry' = retry ++ <<<<c,b>>, t[2]>>
                           /\ UNCHANGED <<propose, stable, join>>
                        \/ /\ \E q \in Quorum:
-                               /\ <<c,b>> \notin DOMAIN retry
-                               /\ \A p2 \in q : SeenAt(c, b, p2) /\ estimate[p2][c][b].status # "rejected"
+                               /\ <<c,b>> \notin DOMAIN retry \cup DOMAIN stable
+                               /\ \A p2 \in q : SeenAt(c, b, p2) /\ estimate[p2][c][b].status = "accepted"
                                /\ LET ds == UNION {estimate[p2][c][b].deps : p2 \in q} IN
                                     LET t == GTE(c, {<<c, estimate[p2][c][b].ts>> : p2 \in q}) IN
                                       retry' = retry ++ <<<<c,b>>, t[2]>>
@@ -707,20 +707,8 @@ leader(self) == /\ LET c == self[1] IN
                                                 /\ <<c,b>> \notin DOMAIN propose
                                                 /\ propose' = propose ++ <<<<c,b>>, t>>
                           /\ UNCHANGED <<stable, retry, join>>
-                       \/ /\ <<c,b>> \in join
-                          /\ \E q \in Quorum:
-                               /\ \A p \in q : ballot[p][c] >= b
-                               /\ LET maxBal == MaxBal(c, b, q) IN
-                                    /\ maxBal # -1
-                                    /\ LET ps == {p \in q : ParticipatedIn(maxBal, c, p)} IN
-                                         \E p \in ps:
-                                           /\ \A p2 \in ps : estimate[p2][c][maxBal].status \notin {"accepted","stable","rejected"}
-                                           /\ estimate[p][c][maxBal].status = "pending"
-                                           /\ Assert(b \in Ballot /\ (estimate[p][c][maxBal].ts) \in Nat /\ c \in C, 
-                                                     "Failure of assertion at line 250, column 9 of macro called at line 463, column 29.")
-                                           /\ <<c,b>> \notin DOMAIN propose
-                                           /\ propose' = propose ++ <<<<c,b>>, (estimate[p][c][maxBal].ts)>>
-                          /\ UNCHANGED <<stable, retry, join>>
+                       \/ /\ TRUE
+                          /\ UNCHANGED <<propose, stable, retry, join>>
                        \/ /\ <<c,b>> \in join
                           /\ \E q \in Quorum:
                                /\ \A p \in q : ballot[p][c] >= b
@@ -769,7 +757,7 @@ acc(self) == /\ \/ /\ \E c \in C:
                           /\  b \in DOMAIN estimate[self][c]
                              => estimate[self][c][b].status \in {"pending", "rejected"}
                           /\ LET t == retry[<<c, b>>] IN
-                               LET ds == CmdsWithLowerT(self, c, t) IN
+                               LET ds == CmdsWithLowerT(self, c, t) \ {c} IN
                                  estimate' =         [estimate EXCEPT ![self] = [@ EXCEPT ![c] = @ ++
                                              <<b, [ts |-> t, status |-> "accepted", deps |-> ds]>>]]
                    /\ UNCHANGED ballot
@@ -790,5 +778,5 @@ Spec == Init /\ [][Next]_vars
 
 =============================================================================
 \* Modification History
-\* Last modified Mon Mar 21 14:07:12 EDT 2016 by nano
+\* Last modified Mon Mar 21 15:10:25 EDT 2016 by nano
 \* Created Thu Mar 17 21:48:45 EDT 2016 by nano
