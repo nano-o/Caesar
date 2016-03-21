@@ -175,7 +175,8 @@ GTE(c, xs) ==
         (* This invariant does not hold because some dependencies in deps  *)
         (* will be only eventually eliminated, whereas Pred2 eleminates    *)
         (* them as soon as they appear...  Can we use Pred2 instead of     *)
-        (* Pred?                                                           *)
+        (* Pred? We could if we did not need to keep the history of preds  *)
+        (* to simulate receiving messages sent in a past state.            *)
         (*******************************************************************)
         Inv3 == \A c \in C, p \in P : 
             c \in SeenCmds(p) /\ MaxEstimate(c,p).status # "stable" => Pred(c,p) \subseteq Pred2(c,p)
@@ -766,5 +767,5 @@ THEOREM Spec => [](Agreement /\ GraphInvariant)
 
 =============================================================================
 \* Modification History
-\* Last modified Mon Mar 21 09:15:40 EDT 2016 by nano
+\* Last modified Mon Mar 21 09:17:35 EDT 2016 by nano
 \* Created Thu Mar 17 21:48:45 EDT 2016 by nano
