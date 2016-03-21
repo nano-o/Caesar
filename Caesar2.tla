@@ -239,6 +239,9 @@ GTE(c, xs) ==
         
         WeakAgreement == \A c \in C : \A s1, s2 \in DOMAIN stable : 
             s1[1] = c /\ s2[1] = c => stable[s1].ts = stable[s2].ts
+            
+        Cmd(leader) == leader[1]
+        Bal(leader) == leader[2]
         
         }
     
@@ -246,15 +249,15 @@ GTE(c, xs) ==
     (* Finally, the algorithm:                                             *)
     (***********************************************************************)
  
+ 
     \* Models a the leader of ballot b for command c making a proposal.
     macro Propose(c, b, t) {
-        assert b \in Ballot /\ t \in Nat /\ c \in C;
         \* has not been proposed before in this ballot:
         when <<c,b>> \notin DOMAIN propose;
         propose := propose ++ <<<<c,b>>, t>>
     }
 
-    \* Models replying to a proposal with an ACK message.  
+    \* Models replying to a proposal with an ACK message.
     macro AckPropose(p) {
         with (c \in C; b = ballot[p][c]) { 
             when <<c, b>> \in DOMAIN propose; \* Only reply for a proposal in the current ballot.
@@ -292,7 +295,6 @@ GTE(c, xs) ==
     \* The leader triggers the slow path because it received a "rejected" response to its proposal. 
     macro RetryWhenRejected(c, b) {
         with (q \in Quorum) {
-            when <<c,b>> \notin DOMAIN retry \cup DOMAIN stable;
             when \A p2 \in q : SeenAt(c, b, p2); \* p2 has seen c in ballot b.
             when \E p2 \in q : estimate[p2][c][b].status = "rejected";
             with (ds = UNION {estimate[p2][c][b].deps : p2 \in q}, 
@@ -306,7 +308,6 @@ GTE(c, xs) ==
     \* and it did not receive any "rejected" response to its proposal.
     macro RetryWhenTimeout(c, b) {
         with (q \in Quorum) {
-            when <<c,b>> \notin DOMAIN retry \cup DOMAIN stable;
             when \A p2 \in q : SeenAt(c, b, p2) /\ estimate[p2][c][b].status = "accepted";
             with (ds = UNION {estimate[p2][c][b].deps : p2 \in q}, 
                     t = GTE(c, {<<c, estimate[p2][c][b].ts>> : p2 \in q})) { \* greater than has no effet. Do we need strictly greater?
@@ -359,7 +360,7 @@ GTE(c, xs) ==
     }
     
     macro StartBallot(c, b) {
-        when b > 0; \* Only start ballots greater than 0; 0 is started by default.
+        assert b > 0; \* Only start ballots greater than 0; 0 is started by default.
         join := join \cup {<<c,b>>};
     }
     
@@ -371,7 +372,6 @@ GTE(c, xs) ==
     }
     
     macro  RecoverAccepted(c, b) {
-        when <<c,b>> \in join;
         with (q \in Quorum) {
             when \A p \in q : ballot[p][c] >= b; \* every p in the quorum is in b or higher.
             \* the maximum ballot strictly less than b in which a vote was cast:
@@ -389,7 +389,6 @@ GTE(c, xs) ==
     }
     
     macro  RecoverRejected(c, b) {
-        when <<c,b>> \in join;
         with (q \in Quorum) {
             when \A p \in q : ballot[p][c] >= b; \* every p in the quorum is in b or higher.
             with (maxBal = MaxBal(c, b, q)) { \* the maximum ballot strictly less than b in which a vote was cast.
@@ -407,7 +406,6 @@ GTE(c, xs) ==
     }    
     
     macro  RecoverPending(c, b) {
-        when <<c,b>> \in join;
         with (q \in Quorum) {
             when \A p \in q : ballot[p][c] >= b; \* every p in the quorum is in b or higher.
             with (maxBal = MaxBal(c, b, q)) { \* the maximum ballot strictly less than b in which a vote was cast.
@@ -425,7 +423,6 @@ GTE(c, xs) ==
     \* In practice this should not happen if the new leader is in its received quorum. 
     \* Could happen if recovery is triggered by a client.
     macro RecoverNotSeen(c, b) { 
-        when <<c,b>> \in join;
         with (q \in Quorum) {
             when \A p \in q : ballot[p][c] >= b; \* every p in the quorum is in b or higher.
             with (maxBal = MaxBal(c, b, q)) { \* the maximum ballot strictly less than b in which a vote was cast.
@@ -436,39 +433,34 @@ GTE(c, xs) ==
             }
         }
     }
-  
-    process (leader \in C \times Ballot) {
-        ldr:    while (TRUE) {
-                    \* event loop of the ballot-b leader of command c:
-                    with (c = self[1], b = self[2]) { 
-                        either {
-                            with (t \in Time) {
-                                when b = 0; \* Direct proposals can only be made in ballot 0.
-                                Propose(c, b, t); 
-                            }
-                        } or {
-                            FastDecision(c, b);
-                        } or {
-                            RetryWhenRejected(c, b);
-                        } or {
-                            RetryWhenTimeout(c, b);
-                        } or {
-                            SlowDecision(c, b);
-                        } or {
-                            StartBallot(c, b);
-                        } or {
-                            RecoverAccepted(c, b);
-                        } or {
-                            RecoverRejected(c, b);
-                        } or {
-                            skip; \* RecoverPending(c, b);
-                        } or {
-                            RecoverNotSeen(c, b);
-                        }
-                    }
-                }
+    
+    \* Workflow of a decision:
+    procedure Decide(com, bal) {
+        decide:     either  { 
+        decideFast:     FastDecision(com, bal) }
+                    or {
+        retry:          either  { RetryWhenRejected(com, bal) }
+                        or      { RetryWhenTimeout(com, bal) };
+        decideSlow:     SlowDecision(com, bal) }
+    } 
+    
+    \* The work flow of the initial leader:
+    process (initialLeader \in C) {
+        propose:    with (t \in Time) { Propose(self, 0, t) };
+        decide:     call Decide(self, 0);
     }
     
+    \* The work flow of a recovery leader:
+    process (recoveryLeader \in (C \times (Ballot \ {0}))) {
+        start:      StartBallot(self[1], self[2]);
+        recover:    either  { RecoverAccepted(self[1], self[2]) }
+                    or      { RecoverRejected(self[1], self[2]) }
+                    or      { RecoverNotSeen(self[1], self[2]) }
+                    or      { skip }; \* { RecoverPending(self[1], self[2]); }
+        decide:     call Decide(self[1], self[2])
+    }
+    
+    \* Acceptors:
     process (acc \in P) {
         acc:    while (TRUE) {
                     either {
@@ -489,8 +481,13 @@ GTE(c, xs) ==
 
 *) 
 \* BEGIN TRANSLATION
-\* Label acc of process acc at line 473 col 17 changed to acc_
-VARIABLES ballot, estimate, propose, stable, retry, join
+\* Label decide of procedure Decide at line 439 col 21 changed to decide_
+\* Label retry of procedure Decide at line 442 col 25 changed to retry_
+\* Label propose of process initialLeader at line 449 col 26 changed to propose_
+\* Label decide of process initialLeader at line 450 col 21 changed to decide_i
+\* Label acc of process acc at line 465 col 17 changed to acc_
+CONSTANT defaultInitValue
+VARIABLES ballot, estimate, propose, stable, retry, join, pc, stack
 
 (* define statement *)
 Status == {"pending", "stable", "accepted", "rejected"}
@@ -626,10 +623,15 @@ Agreement == \A c \in C : \A s1, s2 \in DOMAIN stable :
 WeakAgreement == \A c \in C : \A s1, s2 \in DOMAIN stable :
     s1[1] = c /\ s2[1] = c => stable[s1].ts = stable[s2].ts
 
+Cmd(leader) == leader[1]
+Bal(leader) == leader[2]
 
-vars == << ballot, estimate, propose, stable, retry, join >>
+VARIABLES com, bal
 
-ProcSet == (C \times Ballot) \cup (P)
+vars == << ballot, estimate, propose, stable, retry, join, pc, stack, com, 
+           bal >>
+
+ProcSet == (C) \cup ((C \times (Ballot \ {0}))) \cup (P)
 
 Init == (* Global variables *)
         /\ ballot = [p \in P |-> [c \in C |-> 0]]
@@ -638,139 +640,197 @@ Init == (* Global variables *)
         /\ stable = <<>>
         /\ retry = <<>>
         /\ join = {}
+        (* Procedure Decide *)
+        /\ com = [ self \in ProcSet |-> defaultInitValue]
+        /\ bal = [ self \in ProcSet |-> defaultInitValue]
+        /\ stack = [self \in ProcSet |-> << >>]
+        /\ pc = [self \in ProcSet |-> CASE self \in C -> "propose_"
+                                        [] self \in (C \times (Ballot \ {0})) -> "start"
+                                        [] self \in P -> "acc_"]
 
-leader(self) == /\ LET c == self[1] IN
-                     LET b == self[2] IN
-                       \/ /\ \E t \in Time:
-                               /\ b = 0
-                               /\ Assert(b \in Ballot /\ t \in Nat /\ c \in C, 
-                                         "Failure of assertion at line 251, column 9 of macro called at line 447, column 33.")
-                               /\ <<c,b>> \notin DOMAIN propose
-                               /\ propose' = propose ++ <<<<c,b>>, t>>
-                          /\ UNCHANGED <<stable, retry, join>>
-                       \/ /\ \E q \in FastQuorum:
-                               /\  \A p \in q : b \in DOMAIN estimate[p][c]
-                                  /\ estimate[p][c][b].status = "pending"
-                               /\ LET ds == UNION {estimate[p][c][b].deps : p \in q} IN
-                                    LET t == propose[<<c,b>>] IN
-                                      stable' = stable ++ <<<<c,b>>, [ts |-> t, deps |-> ds]>>
-                          /\ UNCHANGED <<propose, retry, join>>
-                       \/ /\ \E q \in Quorum:
-                               /\ <<c,b>> \notin DOMAIN retry \cup DOMAIN stable
-                               /\ \A p2 \in q : SeenAt(c, b, p2)
-                               /\ \E p2 \in q : estimate[p2][c][b].status = "rejected"
-                               /\ LET ds == UNION {estimate[p2][c][b].deps : p2 \in q} IN
-                                    LET t == GTE(c, {<<c, estimate[p2][c][b].ts>> : p2 \in q}) IN
-                                      retry' = retry ++ <<<<c,b>>, [ts |-> t[2], deps |-> ds]>>
-                          /\ UNCHANGED <<propose, stable, join>>
-                       \/ /\ \E q \in Quorum:
-                               /\ <<c,b>> \notin DOMAIN retry \cup DOMAIN stable
-                               /\ \A p2 \in q : SeenAt(c, b, p2) /\ estimate[p2][c][b].status = "accepted"
-                               /\ LET ds == UNION {estimate[p2][c][b].deps : p2 \in q} IN
-                                    LET t == GTE(c, {<<c, estimate[p2][c][b].ts>> : p2 \in q}) IN
-                                      retry' = retry ++ <<<<c,b>>, [ts |-> t[2], deps |-> ds]>>
-                          /\ UNCHANGED <<propose, stable, join>>
-                       \/ /\ \E q \in Quorum:
-                               /\  \A p \in q : b \in DOMAIN estimate[p][c]
-                                  /\ estimate[p][c][b].status = "accepted"
-                               /\ LET ds == UNION {estimate[p][c][b].deps : p \in q} IN
-                                    LET t == retry[<<c,b>>].ts IN
-                                      stable' = stable ++ <<<<c,b>>, [ts |-> t, deps |-> ds]>>
-                          /\ UNCHANGED <<propose, retry, join>>
-                       \/ /\ b > 0
-                          /\ join' = (join \cup {<<c,b>>})
-                          /\ UNCHANGED <<propose, stable, retry>>
-                       \/ /\ <<c,b>> \in join
-                          /\ \E q \in Quorum:
-                               /\ \A p \in q : ballot[p][c] >= b
-                               /\ LET maxBal == MaxBal(c, b, q) IN
-                                    /\ maxBal # -1
-                                    /\ LET ps == {p \in q : ParticipatedIn(maxBal, c, p)} IN
-                                         \E p \in ps:
-                                           /\ \A p2 \in ps : estimate[p2][c][maxBal].status \notin {"stable"}
-                                           /\ estimate[p][c][maxBal].status = "accepted"
-                                           /\ LET e == estimate[p][c][maxBal] IN
-                                                LET t == e.ts IN
-                                                  retry' = retry ++ <<<<c,b>>, t>>
-                          /\ UNCHANGED <<propose, stable, join>>
-                       \/ /\ <<c,b>> \in join
-                          /\ \E q \in Quorum:
-                               /\ \A p \in q : ballot[p][c] >= b
-                               /\ LET maxBal == MaxBal(c, b, q) IN
-                                    /\ maxBal # -1
-                                    /\ LET ps == {p \in q : ParticipatedIn(maxBal, c, p)} IN
-                                         \E p \in ps:
-                                           /\ \A p2 \in ps : estimate[p2][c][maxBal].status \notin {"accepted","stable"}
-                                           /\ estimate[p][c][maxBal].status = "rejected"
-                                           /\ \E t \in Time:
-                                                /\ Assert(b \in Ballot /\ t \in Nat /\ c \in C, 
-                                                          "Failure of assertion at line 251, column 9 of macro called at line 462, column 29.")
-                                                /\ <<c,b>> \notin DOMAIN propose
-                                                /\ propose' = propose ++ <<<<c,b>>, t>>
-                          /\ UNCHANGED <<stable, retry, join>>
-                       \/ /\ TRUE
-                          /\ UNCHANGED <<propose, stable, retry, join>>
-                       \/ /\ <<c,b>> \in join
-                          /\ \E q \in Quorum:
-                               /\ \A p \in q : ballot[p][c] >= b
-                               /\ LET maxBal == MaxBal(c, b, q) IN
-                                    /\ maxBal = -1
-                                    /\ \E t \in Time:
-                                         /\ Assert(b \in Ballot /\ t \in Nat /\ c \in C, 
-                                                   "Failure of assertion at line 251, column 9 of macro called at line 466, column 29.")
-                                         /\ <<c,b>> \notin DOMAIN propose
-                                         /\ propose' = propose ++ <<<<c,b>>, t>>
-                          /\ UNCHANGED <<stable, retry, join>>
-                /\ UNCHANGED << ballot, estimate >>
+decide_(self) == /\ pc[self] = "decide_"
+                 /\ \/ /\ pc' = [pc EXCEPT ![self] = "decideFast"]
+                    \/ /\ pc' = [pc EXCEPT ![self] = "retry_"]
+                 /\ UNCHANGED << ballot, estimate, propose, stable, retry, 
+                                 join, stack, com, bal >>
 
-acc(self) == /\ \/ /\ \E c \in C:
-                        LET b == ballot[self][c] IN
-                          /\ <<c, b>> \in DOMAIN propose
-                          /\ LET t == propose[<<c, b>>] IN
-                               /\ LastBal(c, b, self) < b
-                               /\ \neg Blocked(self, c, t)
-                               /\ \forall c2 \in SeenCmds(self) : \neg Conflicts(self, c, t, c2)
-                               /\ LET ds == CmdsWithLowerT(self, c, t) \ {c} IN
-                                    estimate' =           [estimate EXCEPT ![self] = [@ EXCEPT ![c] = @ ++
-                                                <<b, [ts |-> t, status |-> "pending", deps |-> ds]>>]]
-                   /\ UNCHANGED ballot
-                \/ /\ \E c \in C:
-                        LET b == ballot[self][c] IN
-                          /\ <<c, b>> \in DOMAIN propose
-                          /\ LET t == propose[<<c, b>>] IN
-                               /\ LastBal(c, b, self) < b
-                               /\ \neg Blocked(self, c, t)
-                               /\ \exists c2 \in SeenCmds(self) : Conflicts(self, c, t, c2)
-                               /\ LET ds == SeenCmds(self) \ {c} IN
-                                    LET t2 == GT(c, TimeStamps(self)) IN
-                                      estimate' =           [estimate EXCEPT ![self] = [@ EXCEPT ![c] = @
-                                                  ++ <<b, [ts |-> t2[2], status |-> "rejected", deps |-> ds]>>]]
-                   /\ UNCHANGED ballot
-                \/ /\ \E c \in C:
-                        LET b == ballot[self][c] IN
-                          /\ <<c,b>> \in DOMAIN stable
-                          /\ estimate' =         [estimate EXCEPT ![self] =
-                                         [@ EXCEPT ![c] = @ ++ <<b, stable[<<c,b>>] ++ <<"status", "stable">> >>]]
-                   /\ UNCHANGED ballot
-                \/ /\ \E c \in C:
-                        LET b == ballot[self][c] IN
-                          /\ <<c, b>> \in DOMAIN retry
-                          /\  b \in DOMAIN estimate[self][c]
-                             => estimate[self][c][b].status \in {"pending", "rejected"}
-                          /\ LET e == retry[<<c, b>>] IN
-                               LET ds == (CmdsWithLowerT(self, c, e.ts) \cup e.deps) \ {c} IN
-                                 estimate' =         [estimate EXCEPT ![self] = [@ EXCEPT ![c] = @ ++
-                                             <<b, [ts |-> e.ts, status |-> "accepted", deps |-> ds]>>]]
-                   /\ UNCHANGED ballot
-                \/ /\ \E prop \in join:
-                        LET c == prop[1] IN
-                          LET b == prop[2] IN
-                            /\ b > ballot[self][c]
-                            /\ ballot' = [ballot EXCEPT ![self] = [@ EXCEPT ![c] = b]]
-                   /\ UNCHANGED estimate
-             /\ UNCHANGED << propose, stable, retry, join >>
+decideFast(self) == /\ pc[self] = "decideFast"
+                    /\ \E q \in FastQuorum:
+                         /\  \A p \in q : bal[self] \in DOMAIN estimate[p][com[self]]
+                            /\ estimate[p][com[self]][bal[self]].status = "pending"
+                         /\ LET ds == UNION {estimate[p][com[self]][bal[self]].deps : p \in q} IN
+                              LET t == propose[<<com[self],bal[self]>>] IN
+                                stable' = stable ++ <<<<com[self],bal[self]>>, [ts |-> t, deps |-> ds]>>
+                    /\ pc' = [pc EXCEPT ![self] = "Error"]
+                    /\ UNCHANGED << ballot, estimate, propose, retry, join, 
+                                    stack, com, bal >>
 
-Next == (\E self \in C \times Ballot: leader(self))
+retry_(self) == /\ pc[self] = "retry_"
+                /\ \/ /\ \E q \in Quorum:
+                           /\ \A p2 \in q : SeenAt(com[self], bal[self], p2)
+                           /\ \E p2 \in q : estimate[p2][com[self]][bal[self]].status = "rejected"
+                           /\ LET ds == UNION {estimate[p2][com[self]][bal[self]].deps : p2 \in q} IN
+                                LET t == GTE(com[self], {<<com[self], estimate[p2][com[self]][bal[self]].ts>> : p2 \in q}) IN
+                                  retry' = retry ++ <<<<com[self],bal[self]>>, [ts |-> t[2], deps |-> ds]>>
+                   \/ /\ \E q \in Quorum:
+                           /\ \A p2 \in q : SeenAt(com[self], bal[self], p2) /\ estimate[p2][com[self]][bal[self]].status = "accepted"
+                           /\ LET ds == UNION {estimate[p2][com[self]][bal[self]].deps : p2 \in q} IN
+                                LET t == GTE(com[self], {<<com[self], estimate[p2][com[self]][bal[self]].ts>> : p2 \in q}) IN
+                                  retry' = retry ++ <<<<com[self],bal[self]>>, [ts |-> t[2], deps |-> ds]>>
+                /\ pc' = [pc EXCEPT ![self] = "decideSlow"]
+                /\ UNCHANGED << ballot, estimate, propose, stable, join, stack, 
+                                com, bal >>
+
+decideSlow(self) == /\ pc[self] = "decideSlow"
+                    /\ \E q \in Quorum:
+                         /\  \A p \in q : bal[self] \in DOMAIN estimate[p][com[self]]
+                            /\ estimate[p][com[self]][bal[self]].status = "accepted"
+                         /\ LET ds == UNION {estimate[p][com[self]][bal[self]].deps : p \in q} IN
+                              LET t == retry[<<com[self],bal[self]>>].ts IN
+                                stable' = stable ++ <<<<com[self],bal[self]>>, [ts |-> t, deps |-> ds]>>
+                    /\ pc' = [pc EXCEPT ![self] = "Error"]
+                    /\ UNCHANGED << ballot, estimate, propose, retry, join, 
+                                    stack, com, bal >>
+
+Decide(self) == decide_(self) \/ decideFast(self) \/ retry_(self)
+                   \/ decideSlow(self)
+
+propose_(self) == /\ pc[self] = "propose_"
+                  /\ \E t \in Time:
+                       /\ <<self,0>> \notin DOMAIN propose
+                       /\ propose' = propose ++ <<<<self,0>>, t>>
+                  /\ pc' = [pc EXCEPT ![self] = "decide_i"]
+                  /\ UNCHANGED << ballot, estimate, stable, retry, join, stack, 
+                                  com, bal >>
+
+decide_i(self) == /\ pc[self] = "decide_i"
+                  /\ /\ bal' = [bal EXCEPT ![self] = 0]
+                     /\ com' = [com EXCEPT ![self] = self]
+                     /\ stack' = [stack EXCEPT ![self] = << [ procedure |->  "Decide",
+                                                              pc        |->  "Done",
+                                                              com       |->  com[self],
+                                                              bal       |->  bal[self] ] >>
+                                                          \o stack[self]]
+                  /\ pc' = [pc EXCEPT ![self] = "decide_"]
+                  /\ UNCHANGED << ballot, estimate, propose, stable, retry, 
+                                  join >>
+
+initialLeader(self) == propose_(self) \/ decide_i(self)
+
+start(self) == /\ pc[self] = "start"
+               /\ Assert((self[2]) > 0, 
+                         "Failure of assertion at line 363, column 9 of macro called at line 455, column 21.")
+               /\ join' = (join \cup {<<(self[1]),(self[2])>>})
+               /\ pc' = [pc EXCEPT ![self] = "recover"]
+               /\ UNCHANGED << ballot, estimate, propose, stable, retry, stack, 
+                               com, bal >>
+
+recover(self) == /\ pc[self] = "recover"
+                 /\ \/ /\ \E q \in Quorum:
+                            /\ \A p \in q : ballot[p][(self[1])] >= (self[2])
+                            /\ LET maxBal == MaxBal((self[1]), (self[2]), q) IN
+                                 /\ maxBal # -1
+                                 /\ LET ps == {p \in q : ParticipatedIn(maxBal, (self[1]), p)} IN
+                                      \E p \in ps:
+                                        /\ \A p2 \in ps : estimate[p2][(self[1])][maxBal].status \notin {"stable"}
+                                        /\ estimate[p][(self[1])][maxBal].status = "accepted"
+                                        /\ LET e == estimate[p][(self[1])][maxBal] IN
+                                             LET t == e.ts IN
+                                               retry' = retry ++ <<<<(self[1]),(self[2])>>, t>>
+                       /\ UNCHANGED propose
+                    \/ /\ \E q \in Quorum:
+                            /\ \A p \in q : ballot[p][(self[1])] >= (self[2])
+                            /\ LET maxBal == MaxBal((self[1]), (self[2]), q) IN
+                                 /\ maxBal # -1
+                                 /\ LET ps == {p \in q : ParticipatedIn(maxBal, (self[1]), p)} IN
+                                      \E p \in ps:
+                                        /\ \A p2 \in ps : estimate[p2][(self[1])][maxBal].status \notin {"accepted","stable"}
+                                        /\ estimate[p][(self[1])][maxBal].status = "rejected"
+                                        /\ \E t \in Time:
+                                             /\ <<(self[1]),(self[2])>> \notin DOMAIN propose
+                                             /\ propose' = propose ++ <<<<(self[1]),(self[2])>>, t>>
+                       /\ retry' = retry
+                    \/ /\ \E q \in Quorum:
+                            /\ \A p \in q : ballot[p][(self[1])] >= (self[2])
+                            /\ LET maxBal == MaxBal((self[1]), (self[2]), q) IN
+                                 /\ maxBal = -1
+                                 /\ \E t \in Time:
+                                      /\ <<(self[1]),(self[2])>> \notin DOMAIN propose
+                                      /\ propose' = propose ++ <<<<(self[1]),(self[2])>>, t>>
+                       /\ retry' = retry
+                    \/ /\ TRUE
+                       /\ UNCHANGED <<propose, retry>>
+                 /\ pc' = [pc EXCEPT ![self] = "decide"]
+                 /\ UNCHANGED << ballot, estimate, stable, join, stack, com, 
+                                 bal >>
+
+decide(self) == /\ pc[self] = "decide"
+                /\ /\ bal' = [bal EXCEPT ![self] = self[2]]
+                   /\ com' = [com EXCEPT ![self] = self[1]]
+                   /\ stack' = [stack EXCEPT ![self] = << [ procedure |->  "Decide",
+                                                            pc        |->  "Done",
+                                                            com       |->  com[self],
+                                                            bal       |->  bal[self] ] >>
+                                                        \o stack[self]]
+                /\ pc' = [pc EXCEPT ![self] = "decide_"]
+                /\ UNCHANGED << ballot, estimate, propose, stable, retry, join >>
+
+recoveryLeader(self) == start(self) \/ recover(self) \/ decide(self)
+
+acc_(self) == /\ pc[self] = "acc_"
+              /\ \/ /\ \E c \in C:
+                         LET b == ballot[self][c] IN
+                           /\ <<c, b>> \in DOMAIN propose
+                           /\ LET t == propose[<<c, b>>] IN
+                                /\ LastBal(c, b, self) < b
+                                /\ \neg Blocked(self, c, t)
+                                /\ \forall c2 \in SeenCmds(self) : \neg Conflicts(self, c, t, c2)
+                                /\ LET ds == CmdsWithLowerT(self, c, t) \ {c} IN
+                                     estimate' =           [estimate EXCEPT ![self] = [@ EXCEPT ![c] = @ ++
+                                                 <<b, [ts |-> t, status |-> "pending", deps |-> ds]>>]]
+                    /\ UNCHANGED ballot
+                 \/ /\ \E c \in C:
+                         LET b == ballot[self][c] IN
+                           /\ <<c, b>> \in DOMAIN propose
+                           /\ LET t == propose[<<c, b>>] IN
+                                /\ LastBal(c, b, self) < b
+                                /\ \neg Blocked(self, c, t)
+                                /\ \exists c2 \in SeenCmds(self) : Conflicts(self, c, t, c2)
+                                /\ LET ds == SeenCmds(self) \ {c} IN
+                                     LET t2 == GT(c, TimeStamps(self)) IN
+                                       estimate' =           [estimate EXCEPT ![self] = [@ EXCEPT ![c] = @
+                                                   ++ <<b, [ts |-> t2[2], status |-> "rejected", deps |-> ds]>>]]
+                    /\ UNCHANGED ballot
+                 \/ /\ \E c \in C:
+                         LET b == ballot[self][c] IN
+                           /\ <<c,b>> \in DOMAIN stable
+                           /\ estimate' =         [estimate EXCEPT ![self] =
+                                          [@ EXCEPT ![c] = @ ++ <<b, stable[<<c,b>>] ++ <<"status", "stable">> >>]]
+                    /\ UNCHANGED ballot
+                 \/ /\ \E c \in C:
+                         LET b == ballot[self][c] IN
+                           /\ <<c, b>> \in DOMAIN retry
+                           /\  b \in DOMAIN estimate[self][c]
+                              => estimate[self][c][b].status \in {"pending", "rejected"}
+                           /\ LET e == retry[<<c, b>>] IN
+                                LET ds == (CmdsWithLowerT(self, c, e.ts) \cup e.deps) \ {c} IN
+                                  estimate' =         [estimate EXCEPT ![self] = [@ EXCEPT ![c] = @ ++
+                                              <<b, [ts |-> e.ts, status |-> "accepted", deps |-> ds]>>]]
+                    /\ UNCHANGED ballot
+                 \/ /\ \E prop \in join:
+                         LET c == prop[1] IN
+                           LET b == prop[2] IN
+                             /\ b > ballot[self][c]
+                             /\ ballot' = [ballot EXCEPT ![self] = [@ EXCEPT ![c] = b]]
+                    /\ UNCHANGED estimate
+              /\ pc' = [pc EXCEPT ![self] = "acc_"]
+              /\ UNCHANGED << propose, stable, retry, join, stack, com, bal >>
+
+acc(self) == acc_(self)
+
+Next == (\E self \in ProcSet: Decide(self))
+           \/ (\E self \in C: initialLeader(self))
+           \/ (\E self \in (C \times (Ballot \ {0})): recoveryLeader(self))
            \/ (\E self \in P: acc(self))
 
 Spec == Init /\ [][Next]_vars
@@ -779,5 +839,5 @@ Spec == Init /\ [][Next]_vars
 
 =============================================================================
 \* Modification History
-\* Last modified Mon Mar 21 16:17:22 EDT 2016 by nano
+\* Last modified Mon Mar 21 19:14:58 EDT 2016 by nano
 \* Created Thu Mar 17 21:48:45 EDT 2016 by nano
