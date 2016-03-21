@@ -1,5 +1,21 @@
 ------------------------------ MODULE Caesar2 ------------------------------
 
+(***************************************************************************)
+(* Full specification of the Caesar algorithm.                             *)
+(*                                                                         *)
+(* The actions of the command leaders are specified by stating what the    *)
+(* command leader of command c in ballot b does (called the ballot-b       *)
+(* leader of c), but without identifying which acceptor the leader is,     *)
+(* because that is not needed.                                             *)
+(*                                                                         *)
+(* The specification does not model the network.  Instead, information     *)
+(* about the past states of the acceptors is kept and used to simulate     *)
+(* receiving messages sent at a time in the past.  For example, the        *)
+(* history of the acceptor's estimate of the timestamp and dependencies of *)
+(* a command is kept in a variable mapping an acceptor and a ballot number *)
+(* to an estimate.                                                         *)
+(***************************************************************************)
+
 EXTENDS Naturals, FiniteSets, TLC, Sequences, Integers
 
 (***************************************************************************)
@@ -15,15 +31,13 @@ Image(f) == {f[x] : x \in DOMAIN f}
 (***************************************************************************)
 (* N is the number of processes, C the set of commands.                    *)
 (***************************************************************************)
-CONSTANTS N, MaxTime, Quorum, FastQuorum, NumBallots, NumCmds
+CONSTANTS P, MaxTime, Quorum, FastQuorum, NumBallots, NumCmds
 
 ASSUME NumCmds \in Nat /\ NumCmds > 0
 
 C == 0..(NumCmds-1)
 
-ASSUME N \in Nat /\ N > 0
-
-P ==  0..(N-1) 
+\* ASSUME N \in Nat /\ N > 0
 
 Time == 1..MaxTime
 
@@ -82,11 +96,13 @@ GTE(c, xs) ==
         estimate = [p \in P |-> [c \in C |-> <<>>]],
         \* maps a pair <<c,b>> to a timestamp t, indicating that the proposal for command c in ballot b is timestamp t:
         propose = <<>>,
-        \* maps a pair <<c,b>> to a set of dependencies ds and a timestamp t, indicating that c has been committed in ballot b with timestamp t and dependencies ds: 
+        \* maps a pair <<c,b>> to a set of dependencies ds and a timestamp t, indicating that c has been committed in ballot b
+        \* with timestamp t and dependencies ds: 
         stable = <<>>,
         \* maps a pair <<c,b>> to a timestamp t, indicating that c is to be retried in ballot b with timestamp t.
         retry = <<>>,
-        join = {} \* a set of pairs <<c,b>>, indicating that the leader of c in b asks to join ballot b.
+        \* a set of pairs <<c,b>>, indicating that the leader of c in b asks to join ballot b:
+        join = {} 
 
     define {
     
@@ -100,6 +116,10 @@ GTE(c, xs) ==
             ELSE -1
         
         MaxEstimate(c, p) == estimate[p][c][LastBal(c, Max(Ballot), p)]
+        
+        MaxBal(c, b, q) == 
+            LET bals == {LastBal(c, b-1, p) : p \in q}
+            IN Max(bals)
         
         \* The timestamp found at p in the estimate for c in the highest ballot.
         TimeStampOf(c, p) == MaxEstimate(c,p).ts
@@ -140,7 +160,8 @@ GTE(c, xs) ==
                 when \forall c2 \in SeenCmds(p) : \neg Conflicts(p, c, t, c2); \* There is no conflict.
                 with ( ds = CmdsWithLowerT(p, c, t) ) { \* Collect all commands with a lower timestamp.
                   \* Add the command to the local estimate:
-                  estimate := [estimate EXCEPT ![p] = [@ EXCEPT ![c] = @ ++ <<b, [ts |-> t, status |-> "pending", pred |-> ds]>>]];
+                  estimate := [estimate EXCEPT ![p] = [@ EXCEPT ![c] = @ ++ 
+                    <<b, [ts |-> t, status |-> "pending", pred |-> ds]>>]];
                 }
             }
         }
@@ -156,7 +177,8 @@ GTE(c, xs) ==
                 when \exists c2 \in SeenCmds(p) : Conflicts(p, c, t, c2); \* There is a conflict.
                 with (  ds = SeenCmds(p); t2 = GT(c, TimeStamps(p)) ) { \* Collect all commands received so far; compute a strict upper bound on their timestamp.
                   \* Add the command to the local estimate:
-                  estimate := [estimate EXCEPT ![p] = [@ EXCEPT ![c] = @ ++ <<b, [ts |-> t2[2], status |-> "rejected", pred |-> ds]>>]];
+                  estimate := [estimate EXCEPT ![p] = [@ EXCEPT ![c] = @ 
+                    ++ <<b, [ts |-> t2[2], status |-> "rejected", pred |-> ds]>>]];
                 }
             }
         }
@@ -167,7 +189,8 @@ GTE(c, xs) ==
             when <<c,b>> \notin DOMAIN retry;
             when \A p2 \in q : SeenAt(c, b, p2); \* p2 has seen c in ballot b.
             when \E p2 \in q : estimate[p2][c][b].status = "rejected";
-            with (ds = UNION {estimate[p2][c][b].pred : p2 \in q}, t = GTE(c, {<<c, estimate[p2][c][b].ts>> : p2 \in q})) {
+            with (ds = UNION {estimate[p2][c][b].pred : p2 \in q}, 
+                    t = GTE(c, {<<c, estimate[p2][c][b].ts>> : p2 \in q})) {
                 retry := retry ++ <<<<c,b>>, t[2]>>;
             }
         }
@@ -176,16 +199,20 @@ GTE(c, xs) ==
     macro RetryAck(p) {
         with (c \in C, b = ballot[p][c]) {
             when <<c, b>> \in DOMAIN retry;
-            when b \in DOMAIN estimate[p][c] => estimate[p][c][b].status \in {"pending", "rejected"}; \* Only reply if p has not seen c in b or has it pending or rejected in b. 
+            \* Only reply if p has not seen c in b or has it pending or rejected in b:
+            when b \in DOMAIN estimate[p][c] 
+                => estimate[p][c][b].status \in {"pending", "rejected"};  
             with (t = retry[<<c, b>>]; ds = CmdsWithLowerT(p, c, t) ) {
-                estimate := [estimate EXCEPT ![p] = [@ EXCEPT ![c] = @ ++ <<b, [ts |-> t, status |-> "accepted", pred |-> ds]>>]];
+                estimate := [estimate EXCEPT ![p] = [@ EXCEPT ![c] = @ ++ 
+                    <<b, [ts |-> t, status |-> "accepted", pred |-> ds]>>]];
             }
         }
     }
     
     macro FastDecision(c, b) {
         with (q \in FastQuorum) {
-            when \A p \in q : b \in DOMAIN estimate[p][c] /\ estimate[p][c][b].status = "pending";
+            when \A p \in q : b \in DOMAIN estimate[p][c] 
+                /\ estimate[p][c][b].status = "pending";
             with (  ds = UNION {estimate[p][c][b].pred : p \in q};
                     t = propose[<<c,b>>] ) {
                 stable := stable ++ <<<<c,b>>, [ts |-> t, pred |-> ds]>>;
@@ -195,7 +222,8 @@ GTE(c, xs) ==
      
     macro SlowDecision(c, b) {
         with (q \in Quorum) {
-            when \A p \in q : b \in DOMAIN estimate[p][c] /\ estimate[p][c][b].status = "accepted";
+            when \A p \in q : b \in DOMAIN estimate[p][c] 
+                /\ estimate[p][c][b].status = "accepted";
             with (  ds = UNION {estimate[p][c][b].pred : p \in q};
                     t = retry[<<c,b>>] ) {
                 stable := stable ++ <<<<c,b>>, [ts |-> t, pred |-> ds]>>;
@@ -212,7 +240,7 @@ GTE(c, xs) ==
     }
     
     macro StartBallot(c, b) {
-        when b > 0; \* Only start ballots > 0; 0 is started by default.
+        when b > 0; \* Only start ballots greater than 0; 0 is started by default.
         join := join \cup {<<c,b>>};
     }
     
@@ -223,13 +251,12 @@ GTE(c, xs) ==
         }
     }
     
-    \* TODO: in the recovery we should use only the information of the highest ballot among the quorum received!
-    
     macro  RecoverAccepted(c, b) {
         when <<c,b>> \in join;
         with (q \in Quorum) {
             when \A p \in q : ballot[p][c] >= b; \* every p in the quorum is in b or higher.
-            with (bals = {LastBal(c, b-1, p) : p \in q}; maxBal = Max(bals)) { \* the maximum ballot strictly less than b in which a vote was cast.
+            \* the maximum ballot strictly less than b in which a vote was cast:
+            with (maxBal = MaxBal(c, b, q)) { 
                 when maxBal # -1;
                 with (ps = {p \in q : maxBal \in DOMAIN estimate[p][c]}; p \in ps) {
                     when \A p2 \in ps : estimate[p2][c][maxBal].status \notin {"stable"}; \* there is no stable.
@@ -246,7 +273,7 @@ GTE(c, xs) ==
         when <<c,b>> \in join;
         with (q \in Quorum) {
             when \A p \in q : ballot[p][c] >= b; \* every p in the quorum is in b or higher.
-            with (bals = {LastBal(c, b-1, p) : p \in q}; maxBal = Max(bals)) { \* the maximum ballot strictly less than b in which a vote was cast.
+            with (maxBal = MaxBal(c, b, q)) { \* the maximum ballot strictly less than b in which a vote was cast.
                 when maxBal # -1;
                 with (ps = {p \in q : maxBal \in DOMAIN estimate[p][c]}; p \in ps) {
                     when \A p2 \in ps : estimate[p2][c][maxBal].status \notin {"accepted","stable"}; \* there is no accept or stable.
@@ -263,7 +290,7 @@ GTE(c, xs) ==
         when <<c,b>> \in join;
         with (q \in Quorum) {
             when \A p \in q : ballot[p][c] >= b; \* every p in the quorum is in b or higher.
-            with (bals = {LastBal(c, b-1, p) : p \in q}; maxBal = Max(bals)) { \* the maximum ballot strictly less than b in which a vote was cast.
+            with (maxBal = MaxBal(c, b, q)) { \* the maximum ballot strictly less than b in which a vote was cast.
                 when maxBal # -1;
                 with (ps = {p \in q : maxBal \in DOMAIN estimate[p][c]}; p \in ps) {
                     when \A p2 \in ps : estimate[p2][c][maxBal].status \notin {"accepted","stable","rejected"}; \* there is no accept or stable or reject.
@@ -274,11 +301,11 @@ GTE(c, xs) ==
         }
     }
     
-    macro RecoverNotSeen(c, b) { \* In practice this should not happen if the new leader is in its received quorum.
+    macro RecoverNotSeen(c, b) { \* In practice this should not happen if the new leader is in its received quorum. Could happen if recovery is triggered by a client.
         when <<c,b>> \in join;
         with (q \in Quorum) {
             when \A p \in q : ballot[p][c] >= b; \* every p in the quorum is in b or higher.
-            with (bals = {LastBal(c, b-1, p) : p \in q}; maxBal = Max(bals)) { \* the maximum ballot strictly less than b in which a vote was cast.
+            with (maxBal = MaxBal(c, b, q)) { \* the maximum ballot strictly less than b in which a vote was cast.
                 when maxBal = -1; \* no acceptor ever saw c.
                 with (t \in Time) {
                    Propose(c, b, t); 
@@ -289,7 +316,8 @@ GTE(c, xs) ==
   
     process (leader \in C \times Ballot) {
         ldr:    while (TRUE) {
-                    with (c = self[1], b = self[2]) {
+                    \* event loop of the ballot-b leader of command c:
+                    with (c = self[1], b = self[2]) { 
                         either {
                             with (t \in Time) {
                                 when b = 0; \* Direct proposals can only be made in ballot 0.
@@ -336,7 +364,7 @@ GTE(c, xs) ==
 
 *) 
 \* BEGIN TRANSLATION
-\* Label acc of process acc at line 320 col 17 changed to acc_
+\* Label acc of process acc at line 331 col 17 changed to acc_
 VARIABLES ballot, estimate, propose, stable, retry, join
 
 (* define statement *)
@@ -350,6 +378,10 @@ LastBal(c, max, p) == LET bals == {b \in DOMAIN estimate[p][c] : b <= max} IN
     ELSE -1
 
 MaxEstimate(c, p) == estimate[p][c][LastBal(c, Max(Ballot), p)]
+
+MaxBal(c, b, q) ==
+    LET bals == {LastBal(c, b-1, p) : p \in q}
+    IN Max(bals)
 
 
 TimeStampOf(c, p) == MaxEstimate(c,p).ts
@@ -388,12 +420,13 @@ leader(self) == /\ LET c == self[1] IN
                        \/ /\ \E t \in Time:
                                /\ b = 0
                                /\ Assert(b \in Ballot /\ t \in Nat /\ c \in C, 
-                                         "Failure of assertion at line 127, column 9 of macro called at line 296, column 33.")
+                                         "Failure of assertion at line 131, column 9 of macro called at line 307, column 33.")
                                /\ \neg <<c,b>> \in DOMAIN propose
                                /\ propose' = propose ++ <<<<c,b>>, t>>
                           /\ UNCHANGED <<stable, retry, join>>
                        \/ /\ \E q \in FastQuorum:
-                               /\ \A p \in q : b \in DOMAIN estimate[p][c] /\ estimate[p][c][b].status = "pending"
+                               /\  \A p \in q : b \in DOMAIN estimate[p][c]
+                                  /\ estimate[p][c][b].status = "pending"
                                /\ LET ds == UNION {estimate[p][c][b].pred : p \in q} IN
                                     LET t == propose[<<c,b>>] IN
                                       stable' = stable ++ <<<<c,b>>, [ts |-> t, pred |-> ds]>>
@@ -407,7 +440,8 @@ leader(self) == /\ LET c == self[1] IN
                                       retry' = retry ++ <<<<c,b>>, t[2]>>
                           /\ UNCHANGED <<propose, stable, join>>
                        \/ /\ \E q \in Quorum:
-                               /\ \A p \in q : b \in DOMAIN estimate[p][c] /\ estimate[p][c][b].status = "accepted"
+                               /\  \A p \in q : b \in DOMAIN estimate[p][c]
+                                  /\ estimate[p][c][b].status = "accepted"
                                /\ LET ds == UNION {estimate[p][c][b].pred : p \in q} IN
                                     LET t == retry[<<c,b>>] IN
                                       stable' = stable ++ <<<<c,b>>, [ts |-> t, pred |-> ds]>>
@@ -418,59 +452,55 @@ leader(self) == /\ LET c == self[1] IN
                        \/ /\ <<c,b>> \in join
                           /\ \E q \in Quorum:
                                /\ \A p \in q : ballot[p][c] >= b
-                               /\ LET bals == {LastBal(c, b-1, p) : p \in q} IN
-                                    LET maxBal == Max(bals) IN
-                                      /\ maxBal # -1
-                                      /\ LET ps == {p \in q : maxBal \in DOMAIN estimate[p][c]} IN
-                                           \E p \in ps:
-                                             /\ \A p2 \in ps : estimate[p2][c][maxBal].status \notin {"stable"}
-                                             /\ estimate[p][c][maxBal].status = "accepted"
-                                             /\ LET e == estimate[p][c][maxBal] IN
-                                                  LET t == e.ts IN
-                                                    retry' = retry ++ <<<<c,b>>, t>>
+                               /\ LET maxBal == MaxBal(c, b, q) IN
+                                    /\ maxBal # -1
+                                    /\ LET ps == {p \in q : maxBal \in DOMAIN estimate[p][c]} IN
+                                         \E p \in ps:
+                                           /\ \A p2 \in ps : estimate[p2][c][maxBal].status \notin {"stable"}
+                                           /\ estimate[p][c][maxBal].status = "accepted"
+                                           /\ LET e == estimate[p][c][maxBal] IN
+                                                LET t == e.ts IN
+                                                  retry' = retry ++ <<<<c,b>>, t>>
                           /\ UNCHANGED <<propose, stable, join>>
                        \/ /\ <<c,b>> \in join
                           /\ \E q \in Quorum:
                                /\ \A p \in q : ballot[p][c] >= b
-                               /\ LET bals == {LastBal(c, b-1, p) : p \in q} IN
-                                    LET maxBal == Max(bals) IN
-                                      /\ maxBal # -1
-                                      /\ LET ps == {p \in q : maxBal \in DOMAIN estimate[p][c]} IN
-                                           \E p \in ps:
-                                             /\ \A p2 \in ps : estimate[p2][c][maxBal].status \notin {"accepted","stable"}
-                                             /\ estimate[p][c][maxBal].status = "rejected"
-                                             /\ \E t \in Time:
-                                                  /\ Assert(b \in Ballot /\ t \in Nat /\ c \in C, 
-                                                            "Failure of assertion at line 127, column 9 of macro called at line 309, column 29.")
-                                                  /\ \neg <<c,b>> \in DOMAIN propose
-                                                  /\ propose' = propose ++ <<<<c,b>>, t>>
+                               /\ LET maxBal == MaxBal(c, b, q) IN
+                                    /\ maxBal # -1
+                                    /\ LET ps == {p \in q : maxBal \in DOMAIN estimate[p][c]} IN
+                                         \E p \in ps:
+                                           /\ \A p2 \in ps : estimate[p2][c][maxBal].status \notin {"accepted","stable"}
+                                           /\ estimate[p][c][maxBal].status = "rejected"
+                                           /\ \E t \in Time:
+                                                /\ Assert(b \in Ballot /\ t \in Nat /\ c \in C, 
+                                                          "Failure of assertion at line 131, column 9 of macro called at line 320, column 29.")
+                                                /\ \neg <<c,b>> \in DOMAIN propose
+                                                /\ propose' = propose ++ <<<<c,b>>, t>>
                           /\ UNCHANGED <<stable, retry, join>>
                        \/ /\ <<c,b>> \in join
                           /\ \E q \in Quorum:
                                /\ \A p \in q : ballot[p][c] >= b
-                               /\ LET bals == {LastBal(c, b-1, p) : p \in q} IN
-                                    LET maxBal == Max(bals) IN
-                                      /\ maxBal # -1
-                                      /\ LET ps == {p \in q : maxBal \in DOMAIN estimate[p][c]} IN
-                                           \E p \in ps:
-                                             /\ \A p2 \in ps : estimate[p2][c][maxBal].status \notin {"accepted","stable","rejected"}
-                                             /\ estimate[p][c][maxBal].status = "pending"
-                                             /\ Assert(b \in Ballot /\ (estimate[p][c][maxBal].ts) \in Nat /\ c \in C, 
-                                                       "Failure of assertion at line 127, column 9 of macro called at line 311, column 29.")
-                                             /\ \neg <<c,b>> \in DOMAIN propose
-                                             /\ propose' = propose ++ <<<<c,b>>, (estimate[p][c][maxBal].ts)>>
-                          /\ UNCHANGED <<stable, retry, join>>
-                       \/ /\ <<c,b>> \in join
-                          /\ \E q \in Quorum:
-                               /\ \A p \in q : ballot[p][c] >= b
-                               /\ LET bals == {LastBal(c, b-1, p) : p \in q} IN
-                                    LET maxBal == Max(bals) IN
-                                      /\ maxBal = -1
-                                      /\ \E t \in Time:
-                                           /\ Assert(b \in Ballot /\ t \in Nat /\ c \in C, 
-                                                     "Failure of assertion at line 127, column 9 of macro called at line 313, column 29.")
+                               /\ LET maxBal == MaxBal(c, b, q) IN
+                                    /\ maxBal # -1
+                                    /\ LET ps == {p \in q : maxBal \in DOMAIN estimate[p][c]} IN
+                                         \E p \in ps:
+                                           /\ \A p2 \in ps : estimate[p2][c][maxBal].status \notin {"accepted","stable","rejected"}
+                                           /\ estimate[p][c][maxBal].status = "pending"
+                                           /\ Assert(b \in Ballot /\ (estimate[p][c][maxBal].ts) \in Nat /\ c \in C, 
+                                                     "Failure of assertion at line 131, column 9 of macro called at line 322, column 29.")
                                            /\ \neg <<c,b>> \in DOMAIN propose
-                                           /\ propose' = propose ++ <<<<c,b>>, t>>
+                                           /\ propose' = propose ++ <<<<c,b>>, (estimate[p][c][maxBal].ts)>>
+                          /\ UNCHANGED <<stable, retry, join>>
+                       \/ /\ <<c,b>> \in join
+                          /\ \E q \in Quorum:
+                               /\ \A p \in q : ballot[p][c] >= b
+                               /\ LET maxBal == MaxBal(c, b, q) IN
+                                    /\ maxBal = -1
+                                    /\ \E t \in Time:
+                                         /\ Assert(b \in Ballot /\ t \in Nat /\ c \in C, 
+                                                   "Failure of assertion at line 131, column 9 of macro called at line 324, column 29.")
+                                         /\ \neg <<c,b>> \in DOMAIN propose
+                                         /\ propose' = propose ++ <<<<c,b>>, t>>
                           /\ UNCHANGED <<stable, retry, join>>
                 /\ UNCHANGED << ballot, estimate >>
 
@@ -482,7 +512,8 @@ acc(self) == /\ \/ /\ \E c \in C:
                                /\ \neg Blocked(self, c, t)
                                /\ \forall c2 \in SeenCmds(self) : \neg Conflicts(self, c, t, c2)
                                /\ LET ds == CmdsWithLowerT(self, c, t) IN
-                                    estimate' = [estimate EXCEPT ![self] = [@ EXCEPT ![c] = @ ++ <<b, [ts |-> t, status |-> "pending", pred |-> ds]>>]]
+                                    estimate' =           [estimate EXCEPT ![self] = [@ EXCEPT ![c] = @ ++
+                                                <<b, [ts |-> t, status |-> "pending", pred |-> ds]>>]]
                    /\ UNCHANGED ballot
                 \/ /\ \E c \in C:
                         LET b == ballot[self][c] IN
@@ -493,7 +524,8 @@ acc(self) == /\ \/ /\ \E c \in C:
                                /\ \exists c2 \in SeenCmds(self) : Conflicts(self, c, t, c2)
                                /\ LET ds == SeenCmds(self) IN
                                     LET t2 == GT(c, TimeStamps(self)) IN
-                                      estimate' = [estimate EXCEPT ![self] = [@ EXCEPT ![c] = @ ++ <<b, [ts |-> t2[2], status |-> "rejected", pred |-> ds]>>]]
+                                      estimate' =           [estimate EXCEPT ![self] = [@ EXCEPT ![c] = @
+                                                  ++ <<b, [ts |-> t2[2], status |-> "rejected", pred |-> ds]>>]]
                    /\ UNCHANGED ballot
                 \/ /\ \E c \in C:
                         LET b == ballot[self][c] IN
@@ -504,10 +536,12 @@ acc(self) == /\ \/ /\ \E c \in C:
                 \/ /\ \E c \in C:
                         LET b == ballot[self][c] IN
                           /\ <<c, b>> \in DOMAIN retry
-                          /\ b \in DOMAIN estimate[self][c] => estimate[self][c][b].status \in {"pending", "rejected"}
+                          /\  b \in DOMAIN estimate[self][c]
+                             => estimate[self][c][b].status \in {"pending", "rejected"}
                           /\ LET t == retry[<<c, b>>] IN
                                LET ds == CmdsWithLowerT(self, c, t) IN
-                                 estimate' = [estimate EXCEPT ![self] = [@ EXCEPT ![c] = @ ++ <<b, [ts |-> t, status |-> "accepted", pred |-> ds]>>]]
+                                 estimate' =         [estimate EXCEPT ![self] = [@ EXCEPT ![c] = @ ++
+                                             <<b, [ts |-> t, status |-> "accepted", pred |-> ds]>>]]
                    /\ UNCHANGED ballot
                 \/ /\ \E prop \in join:
                         LET c == prop[1] IN
@@ -574,7 +608,7 @@ Executable(s) ==
                 /\  s2[1] = c2
                 /\  (<<c2, stable[s2].ts>> \prec <<c, stable[s].ts>> => Executable(s2))
 
-StableTimeStamps == { info.ts : info \in Image(stable) }
+StableTimeStamps == { s.ts : s \in Image(stable) }
 
 TimeStamp(c) == CHOOSE ts \in StableTimeStamps : \E s \in DOMAIN stable :
     s[1] = c /\ stable[s].ts = ts
@@ -594,7 +628,30 @@ Agreement == \A c \in C : \A s1, s2 \in DOMAIN stable :
 WeakAgreement == \A c \in C : \A s1, s2 \in DOMAIN stable : 
     s1[1] = c /\ s2[1] = c => stable[s1].ts = stable[s2].ts
 
+THEOREM Spec => [](Agreement /\ GraphInvariant)
+
+(***************************************************************************)
+(* TODO: the pred set in the local estimates can be computed from the      *)
+(* domain of estimate and the timestamp of each command.  Thus, no need to *)
+(* explicitely carry it.                                                   *)
+(***************************************************************************)
+
+(***************************************************************************)
+(* Some comments.                                                          *)
+(*                                                                         *)
+(* For each command, a Paxos-like algorithm determines a timestamp and a   *)
+(* set of dependencies.  This Paxos-like algorithm is similar in structure *)
+(* to Paxos: in each round, a leader makes a suggestion that is safe in    *)
+(* the sense that any decision made in the past or that will be made in    *)
+(* the future in a previous round will not be contradicted by the          *)
+(* proposal.                                                               *)
+(*                                                                         *)
+(* The big difference with Paxos is that the mechanism for making a        *)
+(* suggetion is more complex.  It proceeds in two rounds and depends on a  *)
+(* property that is cross-cutting to all instances and rounds.             *)
+(***************************************************************************)
+
 =============================================================================
 \* Modification History
-\* Last modified Sun Mar 20 15:37:59 EDT 2016 by nano
+\* Last modified Mon Mar 21 08:35:32 EDT 2016 by nano
 \* Created Thu Mar 17 21:48:45 EDT 2016 by nano
