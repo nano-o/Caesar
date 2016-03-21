@@ -99,7 +99,8 @@ GTE(c, xs) ==
         \* maps a pair <<c,b>> to a set of dependencies ds and a timestamp t, indicating that c has been committed in ballot b
         \* with timestamp t and dependencies ds: 
         stable = <<>>,
-        \* maps a pair <<c,b>> to a timestamp t, indicating that c is to be retried in ballot b with timestamp t.
+        \* maps a pair <<c,b>> to a timestamp t and a set of dependencies ds, 
+        \* indicating that c is to be retried in ballot b with timestamp t and dependencies ds.
         retry = <<>>,
         \* a set of pairs <<c,b>>, indicating that the ballot-b leader of c asks all acceptors to join ballot b:
         join = {} 
@@ -122,7 +123,7 @@ GTE(c, xs) ==
             /\  \A p \in P, c \in C : ballot[p][c] \in Ballot
             /\  \A p \in P, c \in C : \E D \in SUBSET Ballot : estimate[p][c] \in [D -> CmdInfoWithStat]
             /\  \E D \in SUBSET (C \times Ballot) : propose \in [D -> Nat]
-            /\  \E D \in SUBSET (C \times Ballot) : retry \in [D -> Nat]
+            /\  \E D \in SUBSET (C \times Ballot) : retry \in [D -> CmdInfo]
             /\  \E D \in SUBSET (C \times Ballot) : stable \in [D -> CmdInfo]
             /\  join \subseteq (C \times Ballot)
     
@@ -296,7 +297,7 @@ GTE(c, xs) ==
             when \E p2 \in q : estimate[p2][c][b].status = "rejected";
             with (ds = UNION {estimate[p2][c][b].deps : p2 \in q}, 
                     t = GTE(c, {<<c, estimate[p2][c][b].ts>> : p2 \in q})) {
-                retry := retry ++ <<<<c,b>>, t[2]>>;
+                retry := retry ++ <<<<c,b>>, [ts |-> t[2], deps |-> ds]>>;
             }
         }
     }
@@ -309,7 +310,7 @@ GTE(c, xs) ==
             when \A p2 \in q : SeenAt(c, b, p2) /\ estimate[p2][c][b].status = "accepted";
             with (ds = UNION {estimate[p2][c][b].deps : p2 \in q}, 
                     t = GTE(c, {<<c, estimate[p2][c][b].ts>> : p2 \in q})) { \* greater than has no effet. Do we need strictly greater?
-                retry := retry ++ <<<<c,b>>, t[2]>>;
+                retry := retry ++ <<<<c,b>>, [ts |-> t[2], deps |-> ds]>>;
             }
         }
     }
@@ -320,9 +321,9 @@ GTE(c, xs) ==
             \* Only reply if p has not seen c in b or has it pending or rejected in b:
             when b \in DOMAIN estimate[p][c] 
                 => estimate[p][c][b].status \in {"pending", "rejected"};  
-            with (t = retry[<<c, b>>]; ds = CmdsWithLowerT(p, c, t) \ {c}) {
+            with (e = retry[<<c, b>>]; ds = (CmdsWithLowerT(p, c, e.ts) \cup e.deps) \ {c}) { \* TODO: do we need the union with the local dependencies?
                 estimate := [estimate EXCEPT ![p] = [@ EXCEPT ![c] = @ ++ 
-                    <<b, [ts |-> t, status |-> "accepted", deps |-> ds]>>]];
+                    <<b, [ts |-> e.ts, status |-> "accepted", deps |-> ds]>>]];
             }
         }
     }
@@ -343,7 +344,7 @@ GTE(c, xs) ==
             when \A p \in q : b \in DOMAIN estimate[p][c] 
                 /\ estimate[p][c][b].status = "accepted";
             with (  ds = UNION {estimate[p][c][b].deps : p \in q};
-                    t = retry[<<c,b>>] ) {
+                    t = retry[<<c,b>>].ts ) {
                 stable := stable ++ <<<<c,b>>, [ts |-> t, deps |-> ds]>>;
             }
         }
@@ -488,7 +489,7 @@ GTE(c, xs) ==
 
 *) 
 \* BEGIN TRANSLATION
-\* Label acc of process acc at line 472 col 17 changed to acc_
+\* Label acc of process acc at line 473 col 17 changed to acc_
 VARIABLES ballot, estimate, propose, stable, retry, join
 
 (* define statement *)
@@ -508,7 +509,7 @@ TypeInvariant ==
     /\  \A p \in P, c \in C : ballot[p][c] \in Ballot
     /\  \A p \in P, c \in C : \E D \in SUBSET Ballot : estimate[p][c] \in [D -> CmdInfoWithStat]
     /\  \E D \in SUBSET (C \times Ballot) : propose \in [D -> Nat]
-    /\  \E D \in SUBSET (C \times Ballot) : retry \in [D -> Nat]
+    /\  \E D \in SUBSET (C \times Ballot) : retry \in [D -> CmdInfo]
     /\  \E D \in SUBSET (C \times Ballot) : stable \in [D -> CmdInfo]
     /\  join \subseteq (C \times Ballot)
 
@@ -643,7 +644,7 @@ leader(self) == /\ LET c == self[1] IN
                        \/ /\ \E t \in Time:
                                /\ b = 0
                                /\ Assert(b \in Ballot /\ t \in Nat /\ c \in C, 
-                                         "Failure of assertion at line 250, column 9 of macro called at line 446, column 33.")
+                                         "Failure of assertion at line 251, column 9 of macro called at line 447, column 33.")
                                /\ <<c,b>> \notin DOMAIN propose
                                /\ propose' = propose ++ <<<<c,b>>, t>>
                           /\ UNCHANGED <<stable, retry, join>>
@@ -660,20 +661,20 @@ leader(self) == /\ LET c == self[1] IN
                                /\ \E p2 \in q : estimate[p2][c][b].status = "rejected"
                                /\ LET ds == UNION {estimate[p2][c][b].deps : p2 \in q} IN
                                     LET t == GTE(c, {<<c, estimate[p2][c][b].ts>> : p2 \in q}) IN
-                                      retry' = retry ++ <<<<c,b>>, t[2]>>
+                                      retry' = retry ++ <<<<c,b>>, [ts |-> t[2], deps |-> ds]>>
                           /\ UNCHANGED <<propose, stable, join>>
                        \/ /\ \E q \in Quorum:
                                /\ <<c,b>> \notin DOMAIN retry \cup DOMAIN stable
                                /\ \A p2 \in q : SeenAt(c, b, p2) /\ estimate[p2][c][b].status = "accepted"
                                /\ LET ds == UNION {estimate[p2][c][b].deps : p2 \in q} IN
                                     LET t == GTE(c, {<<c, estimate[p2][c][b].ts>> : p2 \in q}) IN
-                                      retry' = retry ++ <<<<c,b>>, t[2]>>
+                                      retry' = retry ++ <<<<c,b>>, [ts |-> t[2], deps |-> ds]>>
                           /\ UNCHANGED <<propose, stable, join>>
                        \/ /\ \E q \in Quorum:
                                /\  \A p \in q : b \in DOMAIN estimate[p][c]
                                   /\ estimate[p][c][b].status = "accepted"
                                /\ LET ds == UNION {estimate[p][c][b].deps : p \in q} IN
-                                    LET t == retry[<<c,b>>] IN
+                                    LET t == retry[<<c,b>>].ts IN
                                       stable' = stable ++ <<<<c,b>>, [ts |-> t, deps |-> ds]>>
                           /\ UNCHANGED <<propose, retry, join>>
                        \/ /\ b > 0
@@ -703,7 +704,7 @@ leader(self) == /\ LET c == self[1] IN
                                            /\ estimate[p][c][maxBal].status = "rejected"
                                            /\ \E t \in Time:
                                                 /\ Assert(b \in Ballot /\ t \in Nat /\ c \in C, 
-                                                          "Failure of assertion at line 250, column 9 of macro called at line 461, column 29.")
+                                                          "Failure of assertion at line 251, column 9 of macro called at line 462, column 29.")
                                                 /\ <<c,b>> \notin DOMAIN propose
                                                 /\ propose' = propose ++ <<<<c,b>>, t>>
                           /\ UNCHANGED <<stable, retry, join>>
@@ -716,7 +717,7 @@ leader(self) == /\ LET c == self[1] IN
                                     /\ maxBal = -1
                                     /\ \E t \in Time:
                                          /\ Assert(b \in Ballot /\ t \in Nat /\ c \in C, 
-                                                   "Failure of assertion at line 250, column 9 of macro called at line 465, column 29.")
+                                                   "Failure of assertion at line 251, column 9 of macro called at line 466, column 29.")
                                          /\ <<c,b>> \notin DOMAIN propose
                                          /\ propose' = propose ++ <<<<c,b>>, t>>
                           /\ UNCHANGED <<stable, retry, join>>
@@ -756,10 +757,10 @@ acc(self) == /\ \/ /\ \E c \in C:
                           /\ <<c, b>> \in DOMAIN retry
                           /\  b \in DOMAIN estimate[self][c]
                              => estimate[self][c][b].status \in {"pending", "rejected"}
-                          /\ LET t == retry[<<c, b>>] IN
-                               LET ds == CmdsWithLowerT(self, c, t) \ {c} IN
+                          /\ LET e == retry[<<c, b>>] IN
+                               LET ds == (CmdsWithLowerT(self, c, e.ts) \cup e.deps) \ {c} IN
                                  estimate' =         [estimate EXCEPT ![self] = [@ EXCEPT ![c] = @ ++
-                                             <<b, [ts |-> t, status |-> "accepted", deps |-> ds]>>]]
+                                             <<b, [ts |-> e.ts, status |-> "accepted", deps |-> ds]>>]]
                    /\ UNCHANGED ballot
                 \/ /\ \E prop \in join:
                         LET c == prop[1] IN
@@ -778,5 +779,5 @@ Spec == Init /\ [][Next]_vars
 
 =============================================================================
 \* Modification History
-\* Last modified Mon Mar 21 15:10:25 EDT 2016 by nano
+\* Last modified Mon Mar 21 16:17:22 EDT 2016 by nano
 \* Created Thu Mar 17 21:48:45 EDT 2016 by nano
