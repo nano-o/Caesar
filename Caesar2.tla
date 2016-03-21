@@ -189,9 +189,11 @@ GTE(c, xs) ==
         (* This invariant must hold for the execution phase (not formalized here)  *)
         (* to be correct.                                                          *)
         (***************************************************************************)
-        GraphInvariant == \A c1,c2 \in DOMAIN stable : c1 # c2 
-            /\ <<c1, stable[c1].ts>> \prec <<c2, stable[c2].ts>> =>
-                c1 \in stable[c2].pred
+        GraphInvariant == \A s1 \in DOMAIN stable, s2 \in DOMAIN stable : 
+            LET c1 == s1[1]
+                c2 == s2[1]
+            IN  c1 # c2 /\ <<c1, stable[s1].ts>> \prec <<c2, stable[s2].ts>> =>
+                    c1 \in stable[s2].pred
         
         (***************************************************************************)
         (* The agreement property.                                                 *)
@@ -484,7 +486,7 @@ GTE(c, xs) ==
 
 *) 
 \* BEGIN TRANSLATION
-\* Label acc of process acc at line 468 col 17 changed to acc_
+\* Label acc of process acc at line 470 col 17 changed to acc_
 VARIABLES ballot, estimate, propose, stable, retry, join
 
 (* define statement *)
@@ -573,9 +575,11 @@ Inv3 == \A c \in C, p \in P :
 
 
 
-GraphInvariant == \A c1,c2 \in DOMAIN stable : c1 # c2
-    /\ <<c1, stable[c1].ts>> \prec <<c2, stable[c2].ts>> =>
-        c1 \in stable[c2].pred
+GraphInvariant == \A s1 \in DOMAIN stable, s2 \in DOMAIN stable :
+    LET c1 == s1[1]
+        c2 == s2[1]
+    IN  c1 # c2 /\ <<c1, stable[s1].ts>> \prec <<c2, stable[s2].ts>> =>
+            c1 \in stable[s2].pred
 
 
 
@@ -637,7 +641,7 @@ leader(self) == /\ LET c == self[1] IN
                        \/ /\ \E t \in Time:
                                /\ b = 0
                                /\ Assert(b \in Ballot /\ t \in Nat /\ c \in C, 
-                                         "Failure of assertion at line 246, column 9 of macro called at line 442, column 33.")
+                                         "Failure of assertion at line 248, column 9 of macro called at line 444, column 33.")
                                /\ <<c,b>> \notin DOMAIN propose
                                /\ propose' = propose ++ <<<<c,b>>, t>>
                           /\ UNCHANGED <<stable, retry, join>>
@@ -697,7 +701,7 @@ leader(self) == /\ LET c == self[1] IN
                                            /\ estimate[p][c][maxBal].status = "rejected"
                                            /\ \E t \in Time:
                                                 /\ Assert(b \in Ballot /\ t \in Nat /\ c \in C, 
-                                                          "Failure of assertion at line 246, column 9 of macro called at line 457, column 29.")
+                                                          "Failure of assertion at line 248, column 9 of macro called at line 459, column 29.")
                                                 /\ <<c,b>> \notin DOMAIN propose
                                                 /\ propose' = propose ++ <<<<c,b>>, t>>
                           /\ UNCHANGED <<stable, retry, join>>
@@ -711,7 +715,7 @@ leader(self) == /\ LET c == self[1] IN
                                            /\ \A p2 \in ps : estimate[p2][c][maxBal].status \notin {"accepted","stable","rejected"}
                                            /\ estimate[p][c][maxBal].status = "pending"
                                            /\ Assert(b \in Ballot /\ (estimate[p][c][maxBal].ts) \in Nat /\ c \in C, 
-                                                     "Failure of assertion at line 246, column 9 of macro called at line 459, column 29.")
+                                                     "Failure of assertion at line 248, column 9 of macro called at line 461, column 29.")
                                            /\ <<c,b>> \notin DOMAIN propose
                                            /\ propose' = propose ++ <<<<c,b>>, (estimate[p][c][maxBal].ts)>>
                           /\ UNCHANGED <<stable, retry, join>>
@@ -722,7 +726,7 @@ leader(self) == /\ LET c == self[1] IN
                                     /\ maxBal = -1
                                     /\ \E t \in Time:
                                          /\ Assert(b \in Ballot /\ t \in Nat /\ c \in C, 
-                                                   "Failure of assertion at line 246, column 9 of macro called at line 461, column 29.")
+                                                   "Failure of assertion at line 248, column 9 of macro called at line 463, column 29.")
                                          /\ <<c,b>> \notin DOMAIN propose
                                          /\ propose' = propose ++ <<<<c,b>>, t>>
                           /\ UNCHANGED <<stable, retry, join>>
@@ -784,5 +788,5 @@ Spec == Init /\ [][Next]_vars
 
 =============================================================================
 \* Modification History
-\* Last modified Mon Mar 21 12:40:50 EDT 2016 by nano
+\* Last modified Mon Mar 21 13:43:08 EDT 2016 by nano
 \* Created Thu Mar 17 21:48:45 EDT 2016 by nano
