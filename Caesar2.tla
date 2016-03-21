@@ -29,15 +29,14 @@ f ++ kv == [x \in DOMAIN f \union {kv[1]} |-> IF x = kv[1] THEN kv[2] ELSE f[x]]
 Image(f) == {f[x] : x \in DOMAIN f}
 
 (***************************************************************************)
-(* N is the number of processes, C the set of commands.                    *)
+(* P is the set of acceptors.  MaxTime bounds the timestamp that can be    *)
+(* assigned to proposals, but not to retries.                              *)
 (***************************************************************************)
 CONSTANTS P, MaxTime, Quorum, FastQuorum, NumBallots, NumCmds
 
 ASSUME NumCmds \in Nat /\ NumCmds > 0
 
 C == 0..(NumCmds-1)
-
-\* ASSUME N \in Nat /\ N > 0
 
 Time == 1..MaxTime
 
@@ -50,11 +49,10 @@ ASSUME \A Q1,Q2 \in Quorum : Q1 \cap Q2 # {}
 ASSUME \A Q1,Q2 \in FastQuorum : \A Q3 \in Quorum : Q1 \cap Q2 \cap Q3 # {}
 
 (***************************************************************************)
-(* Majority quorums and three fourth quorums.                              *)
+(* Majority quorums and three fourths quorums.                             *)
 (***************************************************************************)
 MajQuorums == {Q \in SUBSET P : 2 * Cardinality(Q) > Cardinality(P)}
 ThreeFourthQuorums == {Q \in SUBSET P : 4 * Cardinality(Q) > 3 * Cardinality(P)}
-
 
 (***************************************************************************)
 (* An ordering relation among pairs of the form <<c, timestamp>>.  Allows  *)
@@ -106,17 +104,22 @@ GTE(c, xs) ==
 
     define {
     
+        \* All the commands ever seen by p in any ballot.
         SeenCmds(p) == {c \in C : DOMAIN estimate[p][c] # {}}
         
+        \* TRUE if c was seen in ballot b at p.
         SeenAt(c, b, p) == b \in DOMAIN estimate[p][c]
         
+        \* The highest c-ballot in which p participated.
         LastBal(c, max, p) == LET bals == {b \in DOMAIN estimate[p][c] : b <= max} IN
             IF bals # {}
             THEN Max(bals)
             ELSE -1
         
+        \* The estimate for c on p in the highest c-ballot in which p participated. 
         MaxEstimate(c, p) == estimate[p][c][LastBal(c, Max(Ballot), p)]
         
+        \* Given a quorum q, the maximum ballot strictly less than b in which an acceptor in q has participated.
         MaxBal(c, b, q) == 
             LET bals == {LastBal(c, b-1, p) : p \in q}
             IN Max(bals)
@@ -126,9 +129,12 @@ GTE(c, xs) ==
         
         TimeStamps(p) == {<<c, TimeStampOf(c,p)>> : c \in SeenCmds(p)}
         
+        \* All the commands at p which have a lower timestamp than <<c,t>>
         CmdsWithLowerT(p, c, t) == {c2 \in SeenCmds(p) : <<c2, TimeStampOf(c2,p)>> \prec <<c,t>>}
         
-        Pred(c, p) == MaxEstimate(c, p).pred
+        \* The predecessor set (or dependency set) of c at p.
+        Pred2(c, p) == {c2 \in SeenCmds(p) : <<c2,TimeStampOf(c2,p)>> \prec <<c,TimeStampOf(c,p)>>}
+        Pred(c, p) == MaxEstimate(c, p).pred \ {c}
         
         Conflicts(p, c1, t1, c2) ==
             /\ <<c1,t1>> \prec <<c2, TimeStampOf(c2,p)>>
@@ -139,6 +145,90 @@ GTE(c, xs) ==
             /\ MaxEstimate(c2,p).status \notin {"stable","accepted"}
         
         Blocked(p, c, t) == \exists c2 \in SeenCmds(p) : Blocks(p, c, t, c2)
+        
+        Status == {"pending", "stable", "accepted", "rejected"}
+        
+        CmdInfo == [ts : Nat, pred : SUBSET C]
+        CmdInfoWithStat == [ts : Nat, pred : SUBSET C, status: Status]
+        
+        (***************************************************************************)
+        (* An invariant describing the type of the different variables.  Note that *)
+        (* we extensively use maps (also called functions) keyed by commands.  The *)
+        (* set of keys of a map m is noted DOMAIN m.                               *)
+        (***************************************************************************)
+        TypeInvariant ==
+            /\  \A p \in P, c \in C : ballot[p][c] \in Ballot
+            /\  \A p \in P, c \in C : \E D \in SUBSET Ballot : estimate[p][c] \in [D -> CmdInfoWithStat]
+            /\  \E D \in SUBSET (C \times Ballot) : propose \in [D -> Nat]
+            /\  \E D \in SUBSET (C \times Ballot) : retry \in [D -> Nat]
+            /\  \E D \in SUBSET (C \times Ballot) : stable \in [D -> CmdInfo]
+            /\  join \subseteq (C \times Ballot)
+            
+        (***************************************************************************)
+        (* A few simple invariants.                                                *)
+        (***************************************************************************)
+        Inv1 == \A p \in P : \A c \in C : ballot[p][c] >= LastBal(c, Max(Ballot), p)
+        
+        Inv2 == \A c \in C, b \in Ballot \ {0} : <<c,b>> \in DOMAIN propose => <<c,b>> \in join
+        
+        (*******************************************************************)
+        (* This invariant does not hold because some dependencies in deps  *)
+        (* will be only eventually eliminated, whereas Pred2 eleminates    *)
+        (* them as soon as they appear...  Can we use Pred2 instead of     *)
+        (* Pred?                                                           *)
+        (*******************************************************************)
+        Inv3 == \A c \in C, p \in P : 
+            c \in SeenCmds(p) /\ MaxEstimate(c,p).status # "stable" => Pred(c,p) \subseteq Pred2(c,p)
+        
+        (***************************************************************************)
+        (* This invariant must hold for the execution phase (not formalized here)  *)
+        (* to be correct.                                                          *)
+        (***************************************************************************)
+        GraphInvariant == \A c1,c2 \in DOMAIN stable : c1 # c2 
+            /\ <<c1, stable[c1].ts>> \prec <<c2, stable[c2].ts>> =>
+                c1 \in stable[c2].pred
+        
+        (***************************************************************************)
+        (* The agreement property.                                                 *)
+        (***************************************************************************)
+        
+        (***************************************************************************)
+        (* A command is executable if all its dependencies which have strictly     *)
+        (* lower timestamp are also executable.                                    *)
+        (***************************************************************************)
+        RECURSIVE Executable(_)
+        Executable(s) == 
+            LET c == s[1]
+                b == s[2] 
+            IN  /\  <<c,b>> \in DOMAIN stable 
+                /\  \A c2 \in stable[<<c,b>>].pred : 
+                    /\  \E s2 \in DOMAIN stable : 
+                        /\  s2[1] = c2
+                        /\  (<<c2, stable[s2].ts>> \prec <<c, stable[s].ts>> => Executable(s2))
+        
+        StableTimeStamps == { s.ts : s \in Image(stable) }
+        
+        \* If c is stable and weak agreement holds (see below), this is the unique timestamp of c.
+        TimeStamp(c) == CHOOSE ts \in StableTimeStamps : \E s \in DOMAIN stable :
+            s[1] = c /\ stable[s].ts = ts
+        
+        \* The "real" dependencies of c when committed with timestamp t and dependencies ds, 
+        \* i.e. ds minus the commands commited with a higher timestamp than t.
+        RealDeps(c, t, ds) ==
+                {d \in ds : <<d,TimeStamp(d)>> \prec <<c,t>> }
+        
+        (*******************************************************************)
+        (* If a command c is made stable in two different ballots, then    *)
+        (* its timestamp and real dependencies are the same in both.  Note *)
+        (* that the actual dependency set might be different.              *)
+        Agreement == \A c \in C : \A s1, s2 \in DOMAIN stable : 
+            Executable(s1) /\ Executable(s2) /\ s1[1] = c /\ s2[1] = c 
+                =>  /\  stable[s1].ts = stable[s2].ts
+                    /\  RealDeps(c, TimeStamp(c), stable[s1].pred) = 
+                            RealDeps(c, TimeStamp(c), stable[s2].pred) 
+        
+        WeakAgreement == \A c \in C : \A s1, s2 \in DOMAIN stable : 
+            s1[1] = c /\ s2[1] = c => stable[s1].ts = stable[s2].ts
         
         }
  
@@ -158,7 +248,7 @@ GTE(c, xs) ==
                 when LastBal(c, b, p) < b; \* p has not participated yet in this ballot.
                 when \neg Blocked(self, c, t); \* No higher-timestamped command is blocking c.
                 when \forall c2 \in SeenCmds(p) : \neg Conflicts(p, c, t, c2); \* There is no conflict.
-                with ( ds = CmdsWithLowerT(p, c, t) ) { \* Collect all commands with a lower timestamp.
+                with ( ds = CmdsWithLowerT(p, c, t) \ {c} ) { \* Collect all commands with a lower timestamp.
                   \* Add the command to the local estimate:
                   estimate := [estimate EXCEPT ![p] = [@ EXCEPT ![c] = @ ++ 
                     <<b, [ts |-> t, status |-> "pending", pred |-> ds]>>]];
@@ -175,7 +265,8 @@ GTE(c, xs) ==
                 when LastBal(c, b, p) < b; \* p has not participated yet in this ballot.
                 when \neg Blocked(self, c, t); \* No higher-timestamped command is blocking c.
                 when \exists c2 \in SeenCmds(p) : Conflicts(p, c, t, c2); \* There is a conflict.
-                with (  ds = SeenCmds(p); t2 = GT(c, TimeStamps(p)) ) { \* Collect all commands received so far; compute a strict upper bound on their timestamp.
+                \* Collect all commands received so far; compute a strict upper bound on their timestamp:
+                with (  ds = SeenCmds(p) \ {c}; t2 = GT(c, TimeStamps(p)) ) { 
                   \* Add the command to the local estimate:
                   estimate := [estimate EXCEPT ![p] = [@ EXCEPT ![c] = @ 
                     ++ <<b, [ts |-> t2[2], status |-> "rejected", pred |-> ds]>>]];
@@ -364,20 +455,24 @@ GTE(c, xs) ==
 
 *) 
 \* BEGIN TRANSLATION
-\* Label acc of process acc at line 331 col 17 changed to acc_
+\* Label acc of process acc at line 439 col 17 changed to acc_
 VARIABLES ballot, estimate, propose, stable, retry, join
 
 (* define statement *)
 SeenCmds(p) == {c \in C : DOMAIN estimate[p][c] # {}}
 
+
 SeenAt(c, b, p) == b \in DOMAIN estimate[p][c]
+
 
 LastBal(c, max, p) == LET bals == {b \in DOMAIN estimate[p][c] : b <= max} IN
     IF bals # {}
     THEN Max(bals)
     ELSE -1
 
+
 MaxEstimate(c, p) == estimate[p][c][LastBal(c, Max(Ballot), p)]
+
 
 MaxBal(c, b, q) ==
     LET bals == {LastBal(c, b-1, p) : p \in q}
@@ -388,9 +483,12 @@ TimeStampOf(c, p) == MaxEstimate(c,p).ts
 
 TimeStamps(p) == {<<c, TimeStampOf(c,p)>> : c \in SeenCmds(p)}
 
+
 CmdsWithLowerT(p, c, t) == {c2 \in SeenCmds(p) : <<c2, TimeStampOf(c2,p)>> \prec <<c,t>>}
 
-Pred(c, p) == MaxEstimate(c, p).pred
+
+Pred2(c, p) == {c2 \in SeenCmds(p) : <<c2,TimeStampOf(c2,p)>> \prec <<c,TimeStampOf(c,p)>>}
+Pred(c, p) == MaxEstimate(c, p).pred \ {c}
 
 Conflicts(p, c1, t1, c2) ==
     /\ <<c1,t1>> \prec <<c2, TimeStampOf(c2,p)>>
@@ -401,6 +499,90 @@ Blocks(p, c1, t1, c2) ==
     /\ MaxEstimate(c2,p).status \notin {"stable","accepted"}
 
 Blocked(p, c, t) == \exists c2 \in SeenCmds(p) : Blocks(p, c, t, c2)
+
+Status == {"pending", "stable", "accepted", "rejected"}
+
+CmdInfo == [ts : Nat, pred : SUBSET C]
+CmdInfoWithStat == [ts : Nat, pred : SUBSET C, status: Status]
+
+
+
+
+
+
+TypeInvariant ==
+    /\  \A p \in P, c \in C : ballot[p][c] \in Ballot
+    /\  \A p \in P, c \in C : \E D \in SUBSET Ballot : estimate[p][c] \in [D -> CmdInfoWithStat]
+    /\  \E D \in SUBSET (C \times Ballot) : propose \in [D -> Nat]
+    /\  \E D \in SUBSET (C \times Ballot) : retry \in [D -> Nat]
+    /\  \E D \in SUBSET (C \times Ballot) : stable \in [D -> CmdInfo]
+    /\  join \subseteq (C \times Ballot)
+
+
+
+
+Inv1 == \A p \in P : \A c \in C : ballot[p][c] >= LastBal(c, Max(Ballot), p)
+
+Inv2 == \A c \in C, b \in Ballot \ {0} : <<c,b>> \in DOMAIN propose => <<c,b>> \in join
+
+
+
+
+
+
+
+Inv3 == \A c \in C, p \in P :
+    c \in SeenCmds(p) /\ MaxEstimate(c,p).status # "stable" => Pred(c,p) \subseteq Pred2(c,p)
+
+
+
+
+
+GraphInvariant == \A c1,c2 \in DOMAIN stable : c1 # c2
+    /\ <<c1, stable[c1].ts>> \prec <<c2, stable[c2].ts>> =>
+        c1 \in stable[c2].pred
+
+
+
+
+
+
+
+
+
+RECURSIVE Executable(_)
+Executable(s) ==
+    LET c == s[1]
+        b == s[2]
+    IN  /\  <<c,b>> \in DOMAIN stable
+        /\  \A c2 \in stable[<<c,b>>].pred :
+            /\  \E s2 \in DOMAIN stable :
+                /\  s2[1] = c2
+                /\  (<<c2, stable[s2].ts>> \prec <<c, stable[s].ts>> => Executable(s2))
+
+StableTimeStamps == { s.ts : s \in Image(stable) }
+
+
+TimeStamp(c) == CHOOSE ts \in StableTimeStamps : \E s \in DOMAIN stable :
+    s[1] = c /\ stable[s].ts = ts
+
+
+
+RealDeps(c, t, ds) ==
+        {d \in ds : <<d,TimeStamp(d)>> \prec <<c,t>> }
+
+
+
+
+
+Agreement == \A c \in C : \A s1, s2 \in DOMAIN stable :
+    Executable(s1) /\ Executable(s2) /\ s1[1] = c /\ s2[1] = c
+        =>  /\  stable[s1].ts = stable[s2].ts
+            /\  RealDeps(c, TimeStamp(c), stable[s1].pred) =
+                    RealDeps(c, TimeStamp(c), stable[s2].pred)
+
+WeakAgreement == \A c \in C : \A s1, s2 \in DOMAIN stable :
+    s1[1] = c /\ s2[1] = c => stable[s1].ts = stable[s2].ts
 
 
 vars == << ballot, estimate, propose, stable, retry, join >>
@@ -420,7 +602,7 @@ leader(self) == /\ LET c == self[1] IN
                        \/ /\ \E t \in Time:
                                /\ b = 0
                                /\ Assert(b \in Ballot /\ t \in Nat /\ c \in C, 
-                                         "Failure of assertion at line 131, column 9 of macro called at line 307, column 33.")
+                                         "Failure of assertion at line 237, column 9 of macro called at line 415, column 33.")
                                /\ \neg <<c,b>> \in DOMAIN propose
                                /\ propose' = propose ++ <<<<c,b>>, t>>
                           /\ UNCHANGED <<stable, retry, join>>
@@ -473,7 +655,7 @@ leader(self) == /\ LET c == self[1] IN
                                            /\ estimate[p][c][maxBal].status = "rejected"
                                            /\ \E t \in Time:
                                                 /\ Assert(b \in Ballot /\ t \in Nat /\ c \in C, 
-                                                          "Failure of assertion at line 131, column 9 of macro called at line 320, column 29.")
+                                                          "Failure of assertion at line 237, column 9 of macro called at line 428, column 29.")
                                                 /\ \neg <<c,b>> \in DOMAIN propose
                                                 /\ propose' = propose ++ <<<<c,b>>, t>>
                           /\ UNCHANGED <<stable, retry, join>>
@@ -487,7 +669,7 @@ leader(self) == /\ LET c == self[1] IN
                                            /\ \A p2 \in ps : estimate[p2][c][maxBal].status \notin {"accepted","stable","rejected"}
                                            /\ estimate[p][c][maxBal].status = "pending"
                                            /\ Assert(b \in Ballot /\ (estimate[p][c][maxBal].ts) \in Nat /\ c \in C, 
-                                                     "Failure of assertion at line 131, column 9 of macro called at line 322, column 29.")
+                                                     "Failure of assertion at line 237, column 9 of macro called at line 430, column 29.")
                                            /\ \neg <<c,b>> \in DOMAIN propose
                                            /\ propose' = propose ++ <<<<c,b>>, (estimate[p][c][maxBal].ts)>>
                           /\ UNCHANGED <<stable, retry, join>>
@@ -498,7 +680,7 @@ leader(self) == /\ LET c == self[1] IN
                                     /\ maxBal = -1
                                     /\ \E t \in Time:
                                          /\ Assert(b \in Ballot /\ t \in Nat /\ c \in C, 
-                                                   "Failure of assertion at line 131, column 9 of macro called at line 324, column 29.")
+                                                   "Failure of assertion at line 237, column 9 of macro called at line 432, column 29.")
                                          /\ \neg <<c,b>> \in DOMAIN propose
                                          /\ propose' = propose ++ <<<<c,b>>, t>>
                           /\ UNCHANGED <<stable, retry, join>>
@@ -511,7 +693,7 @@ acc(self) == /\ \/ /\ \E c \in C:
                                /\ LastBal(c, b, self) < b
                                /\ \neg Blocked(self, c, t)
                                /\ \forall c2 \in SeenCmds(self) : \neg Conflicts(self, c, t, c2)
-                               /\ LET ds == CmdsWithLowerT(self, c, t) IN
+                               /\ LET ds == CmdsWithLowerT(self, c, t) \ {c} IN
                                     estimate' =           [estimate EXCEPT ![self] = [@ EXCEPT ![c] = @ ++
                                                 <<b, [ts |-> t, status |-> "pending", pred |-> ds]>>]]
                    /\ UNCHANGED ballot
@@ -522,7 +704,7 @@ acc(self) == /\ \/ /\ \E c \in C:
                                /\ LastBal(c, b, self) < b
                                /\ \neg Blocked(self, c, t)
                                /\ \exists c2 \in SeenCmds(self) : Conflicts(self, c, t, c2)
-                               /\ LET ds == SeenCmds(self) IN
+                               /\ LET ds == SeenCmds(self) \ {c} IN
                                     LET t2 == GT(c, TimeStamps(self)) IN
                                       estimate' =           [estimate EXCEPT ![self] = [@ EXCEPT ![c] = @
                                                   ++ <<b, [ts |-> t2[2], status |-> "rejected", pred |-> ds]>>]]
@@ -558,75 +740,6 @@ Spec == Init /\ [][Next]_vars
 
 \* END TRANSLATION
    
-Status == {"pending", "stable", "accepted", "rejected"}
-
-CmdInfo == [ts : Nat, pred : SUBSET C]
-CmdInfoWithStat == [ts : Nat, pred : SUBSET C, status: Status]
-
-(***************************************************************************)
-(* An invariant describing the type of the different variables.  Note that *)
-(* we extensively use maps (also called functions) keyed by commands.  The *)
-(* set of keys of a map m is noted DOMAIN m.                               *)
-(***************************************************************************)
-TypeInvariant ==
-    /\  \A p \in P, c \in C : ballot[p][c] \in Ballot
-    /\  \A p \in P, c \in C : \E D \in SUBSET Ballot : estimate[p][c] \in [D -> CmdInfoWithStat]
-    /\  \E D \in SUBSET (C \times Ballot) : propose \in [D -> Nat]
-    /\  \E D \in SUBSET (C \times Ballot) : retry \in [D -> Nat]
-    /\  \E D \in SUBSET (C \times Ballot) : stable \in [D -> CmdInfo]
-    /\  join \subseteq (C \times Ballot)
-    
-(***************************************************************************)
-(* A few simple invariants.                                                *)
-(***************************************************************************)
-Inv1 == \A p \in P : \A c \in C : ballot[p][c] >= LastBal(c, Max(Ballot), p)
-
-Inv2 == \A c \in C, b \in Ballot \ {0} : <<c,b>> \in DOMAIN propose => <<c,b>> \in join
-
-(***************************************************************************)
-(* This invariant must hold for the execution phase (not formalized here)  *)
-(* to be correct.                                                          *)
-(***************************************************************************)
-GraphInvariant == \A c1,c2 \in DOMAIN stable : c1 # c2 /\ <<c1, stable[c1].ts>> \prec <<c2, stable[c2].ts>> =>
-    c1 \in stable[c2].pred
-
-(***************************************************************************)
-(* The agreement property.                                                 *)
-(***************************************************************************)
-
-(***************************************************************************)
-(* A command is executable if all its dependencies which have strictly     *)
-(* lower timestamp are also executable.                                    *)
-(***************************************************************************)
-RECURSIVE Executable(_)
-Executable(s) == 
-    LET c == s[1]
-        b == s[2] 
-    IN  /\  <<c,b>> \in DOMAIN stable 
-        /\  \A c2 \in stable[<<c,b>>].pred : 
-            /\  \E s2 \in DOMAIN stable : 
-                /\  s2[1] = c2
-                /\  (<<c2, stable[s2].ts>> \prec <<c, stable[s].ts>> => Executable(s2))
-
-StableTimeStamps == { s.ts : s \in Image(stable) }
-
-TimeStamp(c) == CHOOSE ts \in StableTimeStamps : \E s \in DOMAIN stable :
-    s[1] = c /\ stable[s].ts = ts
-
-RealDeps(c, t, ds) ==
-        {d \in ds : <<d,TimeStamp(d)>> \prec <<c,t>> }
-
-(***************************************************************************)
-(* If a command c is made stable in two different ballots, then its        *)
-(* timestamp and dependencies are the same in both.                        *)
-(***************************************************************************)
-Agreement == \A c \in C : \A s1, s2 \in DOMAIN stable : 
-    Executable(s1) /\ Executable(s2) /\ s1[1] = c /\ s2[1] = c 
-        =>  /\  stable[s1].ts = stable[s2].ts
-            /\  RealDeps(c, TimeStamp(c), stable[s1].pred) = RealDeps(c, TimeStamp(c), stable[s2].pred) 
-
-WeakAgreement == \A c \in C : \A s1, s2 \in DOMAIN stable : 
-    s1[1] = c /\ s2[1] = c => stable[s1].ts = stable[s2].ts
 
 THEOREM Spec => [](Agreement /\ GraphInvariant)
 
@@ -653,5 +766,5 @@ THEOREM Spec => [](Agreement /\ GraphInvariant)
 
 =============================================================================
 \* Modification History
-\* Last modified Mon Mar 21 08:35:32 EDT 2016 by nano
+\* Last modified Mon Mar 21 09:15:40 EDT 2016 by nano
 \* Created Thu Mar 17 21:48:45 EDT 2016 by nano
