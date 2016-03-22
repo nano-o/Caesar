@@ -441,7 +441,8 @@ GTE(c, xs) ==
                     or {
         retry:          either  { RetryWhenRejected(com, bal) }
                         or      { RetryWhenTimeout(com, bal) };
-        decideSlow:     SlowDecision(com, bal); }
+        decideSlow:     SlowDecision(com, bal);
+                        return; }
     }
      
     \* The work flow of a leader:
@@ -449,7 +450,8 @@ GTE(c, xs) ==
         leader:     either {
                         when self[2] = 0; \* In ballot 0, directly propose.
         propose0:       with (t \in Time) { Propose(self[1], 0, t) };
-        decide0:        call Decide(self[1], 0); } 
+        decide0:        call Decide(self[1], 0); 
+        decided0:       skip; } 
                     or {
                         when self[2] > 0; 
                         \* In a non-zero ballot, we first have to determine a safe value to propose in the fast or slow path:
@@ -458,7 +460,8 @@ GTE(c, xs) ==
                         or      { RecoverRejected(self[1], self[2]) }
                         or      { RecoverNotSeen(self[1], self[2]) }
                         or      { skip }; \* { RecoverPending(self[1], self[2]); }
-        decide:         call Decide(self[1], self[2]); }
+        decide:         call Decide(self[1], self[2]); 
+        decided:        skip; }
     }
     
     \* Acceptors:
@@ -484,8 +487,8 @@ GTE(c, xs) ==
 \* BEGIN TRANSLATION
 \* Label decide of procedure Decide at line 439 col 21 changed to decide_
 \* Label retry of procedure Decide at line 442 col 25 changed to retry_
-\* Label leader of process leader at line 449 col 21 changed to leader_
-\* Label acc of process acc at line 466 col 17 changed to acc_
+\* Label leader of process leader at line 450 col 21 changed to leader_
+\* Label acc of process acc at line 469 col 17 changed to acc_
 CONSTANT defaultInitValue
 VARIABLES ballot, estimate, propose, stable, retry, join, pc, stack
 
@@ -687,9 +690,11 @@ decideSlow(self) == /\ pc[self] = "decideSlow"
                          /\ LET ds == UNION {estimate[p][com[self]][bal[self]].deps : p \in q} IN
                               LET t == retry[<<com[self],bal[self]>>].ts IN
                                 stable' = stable ++ <<<<com[self],bal[self]>>, [ts |-> t, deps |-> ds]>>
-                    /\ pc' = [pc EXCEPT ![self] = "Error"]
-                    /\ UNCHANGED << ballot, estimate, propose, retry, join, 
-                                    stack, com, bal >>
+                    /\ pc' = [pc EXCEPT ![self] = Head(stack[self]).pc]
+                    /\ com' = [com EXCEPT ![self] = Head(stack[self]).com]
+                    /\ bal' = [bal EXCEPT ![self] = Head(stack[self]).bal]
+                    /\ stack' = [stack EXCEPT ![self] = Tail(stack[self])]
+                    /\ UNCHANGED << ballot, estimate, propose, retry, join >>
 
 Decide(self) == decide_(self) \/ decideFast(self) \/ retry_(self)
                    \/ decideSlow(self)
@@ -714,7 +719,7 @@ decide0(self) == /\ pc[self] = "decide0"
                  /\ /\ bal' = [bal EXCEPT ![self] = 0]
                     /\ com' = [com EXCEPT ![self] = self[1]]
                     /\ stack' = [stack EXCEPT ![self] = << [ procedure |->  "Decide",
-                                                             pc        |->  "Done",
+                                                             pc        |->  "decided0",
                                                              com       |->  com[self],
                                                              bal       |->  bal[self] ] >>
                                                          \o stack[self]]
@@ -722,9 +727,15 @@ decide0(self) == /\ pc[self] = "decide0"
                  /\ UNCHANGED << ballot, estimate, propose, stable, retry, 
                                  join >>
 
+decided0(self) == /\ pc[self] = "decided0"
+                  /\ TRUE
+                  /\ pc' = [pc EXCEPT ![self] = "Done"]
+                  /\ UNCHANGED << ballot, estimate, propose, stable, retry, 
+                                  join, stack, com, bal >>
+
 startBal(self) == /\ pc[self] = "startBal"
                   /\ Assert((self[2]) > 0, 
-                            "Failure of assertion at line 363, column 9 of macro called at line 456, column 25.")
+                            "Failure of assertion at line 363, column 9 of macro called at line 458, column 25.")
                   /\ join' = (join \cup {<<(self[1]),(self[2])>>})
                   /\ pc' = [pc EXCEPT ![self] = "recover"]
                   /\ UNCHANGED << ballot, estimate, propose, stable, retry, 
@@ -774,15 +785,22 @@ decide(self) == /\ pc[self] = "decide"
                 /\ /\ bal' = [bal EXCEPT ![self] = self[2]]
                    /\ com' = [com EXCEPT ![self] = self[1]]
                    /\ stack' = [stack EXCEPT ![self] = << [ procedure |->  "Decide",
-                                                            pc        |->  "Done",
+                                                            pc        |->  "decided",
                                                             com       |->  com[self],
                                                             bal       |->  bal[self] ] >>
                                                         \o stack[self]]
                 /\ pc' = [pc EXCEPT ![self] = "decide_"]
                 /\ UNCHANGED << ballot, estimate, propose, stable, retry, join >>
 
+decided(self) == /\ pc[self] = "decided"
+                 /\ TRUE
+                 /\ pc' = [pc EXCEPT ![self] = "Done"]
+                 /\ UNCHANGED << ballot, estimate, propose, stable, retry, 
+                                 join, stack, com, bal >>
+
 leader(self) == leader_(self) \/ propose0(self) \/ decide0(self)
-                   \/ startBal(self) \/ recover(self) \/ decide(self)
+                   \/ decided0(self) \/ startBal(self) \/ recover(self)
+                   \/ decide(self) \/ decided(self)
 
 acc_(self) == /\ pc[self] = "acc_"
               /\ \/ /\ \E c \in C:
@@ -844,5 +862,5 @@ Spec == Init /\ [][Next]_vars
 \* END TRANSLATION
 =============================================================================
 \* Modification History
-\* Last modified Tue Mar 22 10:13:10 EDT 2016 by nano
+\* Last modified Tue Mar 22 10:19:04 EDT 2016 by nano
 \* Created Thu Mar 17 21:48:45 EDT 2016 by nano
