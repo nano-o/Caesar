@@ -378,10 +378,10 @@ GTE(c, xs) ==
             with (maxBal = MaxBal(c, b, q)) { 
                 when maxBal # -1;
                 with (ps = {p \in q : ParticipatedIn(maxBal, c, p)}; p \in ps) {
-                    when \A p2 \in ps : estimate[p2][c][maxBal].status \notin {"stable"}; \* there is no stable.
+                    when \A p2 \in ps : estimate[p2][c][maxBal].status \notin {"stable"}; \* there is no stable status.
                     when estimate[p][c][maxBal].status = "accepted";
-                    with (e = estimate[p][c][maxBal], t = e.ts) {
-                        retry := retry ++ <<<<c,b>>, t>>;
+                    with (e = estimate[p][c][maxBal], t = e.ts, ds = e.deps) {\* TODO: or this? ds = UNION {estimate[p2][c][maxBal].deps : p2 \in ps}) {
+                        retry := retry ++ <<<<c,b>>, [ts |-> t, deps |-> ds]>>; 
                     }
                 }
             }
@@ -435,29 +435,30 @@ GTE(c, xs) ==
     }
     
     \* Workflow of a decision:
-    procedure Decide(com, bal) {
+    procedure Decide(com = CHOOSE c \in C : TRUE, bal = CHOOSE b \in Ballot : TRUE) {
         decide:     either  { 
         decideFast:     FastDecision(com, bal) }
                     or {
         retry:          either  { RetryWhenRejected(com, bal) }
                         or      { RetryWhenTimeout(com, bal) };
-        decideSlow:     SlowDecision(com, bal) }
-    } 
-    
-    \* The work flow of the initial leader:
-    process (initialLeader \in C) {
-        propose:    with (t \in Time) { Propose(self, 0, t) };
-        decide:     call Decide(self, 0);
+        decideSlow:     SlowDecision(com, bal); }
     }
-    
-    \* The work flow of a recovery leader:
-    process (recoveryLeader \in (C \times (Ballot \ {0}))) {
-        start:      StartBallot(self[1], self[2]);
-        recover:    either  { RecoverAccepted(self[1], self[2]) }
-                    or      { RecoverRejected(self[1], self[2]) }
-                    or      { RecoverNotSeen(self[1], self[2]) }
-                    or      { skip }; \* { RecoverPending(self[1], self[2]); }
-        decide:     call Decide(self[1], self[2])
+     
+    \* The work flow of a leader:
+    process (leader \in (C \times Ballot)) {
+        leader:     either {
+                        when self[2] = 0; \* In ballot 0, directly propose.
+        propose0:       with (t \in Time) { Propose(self[1], 0, t) };
+        decide0:        call Decide(self[1], 0); } 
+                    or {
+                        when self[2] > 0; 
+                        \* In a non-zero ballot, we first have to determine a safe value to propose in the fast or slow path:
+        startBal:       StartBallot(self[1], self[2]);
+        recover:        either  { RecoverAccepted(self[1], self[2]) } \* 4 cases in the recovery.
+                        or      { RecoverRejected(self[1], self[2]) }
+                        or      { RecoverNotSeen(self[1], self[2]) }
+                        or      { skip }; \* { RecoverPending(self[1], self[2]); }
+        decide:         call Decide(self[1], self[2]); }
     }
     
     \* Acceptors:
@@ -483,10 +484,8 @@ GTE(c, xs) ==
 \* BEGIN TRANSLATION
 \* Label decide of procedure Decide at line 439 col 21 changed to decide_
 \* Label retry of procedure Decide at line 442 col 25 changed to retry_
-\* Label propose of process initialLeader at line 449 col 26 changed to propose_
-\* Label decide of process initialLeader at line 450 col 21 changed to decide_i
+\* Label leader of process leader at line 449 col 21 changed to leader_
 \* Label acc of process acc at line 465 col 17 changed to acc_
-CONSTANT defaultInitValue
 VARIABLES ballot, estimate, propose, stable, retry, join, pc, stack
 
 (* define statement *)
@@ -631,7 +630,7 @@ VARIABLES com, bal
 vars == << ballot, estimate, propose, stable, retry, join, pc, stack, com, 
            bal >>
 
-ProcSet == (C) \cup ((C \times (Ballot \ {0}))) \cup (P)
+ProcSet == ((C \times Ballot)) \cup (P)
 
 Init == (* Global variables *)
         /\ ballot = [p \in P |-> [c \in C |-> 0]]
@@ -641,11 +640,10 @@ Init == (* Global variables *)
         /\ retry = <<>>
         /\ join = {}
         (* Procedure Decide *)
-        /\ com = [ self \in ProcSet |-> defaultInitValue]
-        /\ bal = [ self \in ProcSet |-> defaultInitValue]
+        /\ com = [ self \in ProcSet |-> CHOOSE c \in C : TRUE]
+        /\ bal = [ self \in ProcSet |-> CHOOSE b \in Ballot : TRUE]
         /\ stack = [self \in ProcSet |-> << >>]
-        /\ pc = [self \in ProcSet |-> CASE self \in C -> "propose_"
-                                        [] self \in (C \times (Ballot \ {0})) -> "start"
+        /\ pc = [self \in ProcSet |-> CASE self \in (C \times Ballot) -> "leader_"
                                         [] self \in P -> "acc_"]
 
 decide_(self) == /\ pc[self] = "decide_"
@@ -695,35 +693,41 @@ decideSlow(self) == /\ pc[self] = "decideSlow"
 Decide(self) == decide_(self) \/ decideFast(self) \/ retry_(self)
                    \/ decideSlow(self)
 
-propose_(self) == /\ pc[self] = "propose_"
+leader_(self) == /\ pc[self] = "leader_"
+                 /\ \/ /\ self[2] = 0
+                       /\ pc' = [pc EXCEPT ![self] = "propose0"]
+                    \/ /\ self[2] > 0
+                       /\ pc' = [pc EXCEPT ![self] = "startBal"]
+                 /\ UNCHANGED << ballot, estimate, propose, stable, retry, 
+                                 join, stack, com, bal >>
+
+propose0(self) == /\ pc[self] = "propose0"
                   /\ \E t \in Time:
-                       /\ <<self,0>> \notin DOMAIN propose
-                       /\ propose' = propose ++ <<<<self,0>>, t>>
-                  /\ pc' = [pc EXCEPT ![self] = "decide_i"]
+                       /\ <<(self[1]),0>> \notin DOMAIN propose
+                       /\ propose' = propose ++ <<<<(self[1]),0>>, t>>
+                  /\ pc' = [pc EXCEPT ![self] = "decide0"]
                   /\ UNCHANGED << ballot, estimate, stable, retry, join, stack, 
                                   com, bal >>
 
-decide_i(self) == /\ pc[self] = "decide_i"
-                  /\ /\ bal' = [bal EXCEPT ![self] = 0]
-                     /\ com' = [com EXCEPT ![self] = self]
-                     /\ stack' = [stack EXCEPT ![self] = << [ procedure |->  "Decide",
-                                                              pc        |->  "Done",
-                                                              com       |->  com[self],
-                                                              bal       |->  bal[self] ] >>
-                                                          \o stack[self]]
-                  /\ pc' = [pc EXCEPT ![self] = "decide_"]
+decide0(self) == /\ pc[self] = "decide0"
+                 /\ /\ bal' = [bal EXCEPT ![self] = 0]
+                    /\ com' = [com EXCEPT ![self] = self[1]]
+                    /\ stack' = [stack EXCEPT ![self] = << [ procedure |->  "Decide",
+                                                             pc        |->  "Done",
+                                                             com       |->  com[self],
+                                                             bal       |->  bal[self] ] >>
+                                                         \o stack[self]]
+                 /\ pc' = [pc EXCEPT ![self] = "decide_"]
+                 /\ UNCHANGED << ballot, estimate, propose, stable, retry, 
+                                 join >>
+
+startBal(self) == /\ pc[self] = "startBal"
+                  /\ Assert((self[2]) > 0, 
+                            "Failure of assertion at line 363, column 9 of macro called at line 455, column 25.")
+                  /\ join' = (join \cup {<<(self[1]),(self[2])>>})
+                  /\ pc' = [pc EXCEPT ![self] = "recover"]
                   /\ UNCHANGED << ballot, estimate, propose, stable, retry, 
-                                  join >>
-
-initialLeader(self) == propose_(self) \/ decide_i(self)
-
-start(self) == /\ pc[self] = "start"
-               /\ Assert((self[2]) > 0, 
-                         "Failure of assertion at line 363, column 9 of macro called at line 455, column 21.")
-               /\ join' = (join \cup {<<(self[1]),(self[2])>>})
-               /\ pc' = [pc EXCEPT ![self] = "recover"]
-               /\ UNCHANGED << ballot, estimate, propose, stable, retry, stack, 
-                               com, bal >>
+                                  stack, com, bal >>
 
 recover(self) == /\ pc[self] = "recover"
                  /\ \/ /\ \E q \in Quorum:
@@ -736,7 +740,8 @@ recover(self) == /\ pc[self] = "recover"
                                         /\ estimate[p][(self[1])][maxBal].status = "accepted"
                                         /\ LET e == estimate[p][(self[1])][maxBal] IN
                                              LET t == e.ts IN
-                                               retry' = retry ++ <<<<(self[1]),(self[2])>>, t>>
+                                               LET ds == e.deps IN
+                                                 retry' = retry ++ <<<<(self[1]),(self[2])>>, [ts |-> t, deps |-> ds]>>
                        /\ UNCHANGED propose
                     \/ /\ \E q \in Quorum:
                             /\ \A p \in q : ballot[p][(self[1])] >= (self[2])
@@ -775,7 +780,8 @@ decide(self) == /\ pc[self] = "decide"
                 /\ pc' = [pc EXCEPT ![self] = "decide_"]
                 /\ UNCHANGED << ballot, estimate, propose, stable, retry, join >>
 
-recoveryLeader(self) == start(self) \/ recover(self) \/ decide(self)
+leader(self) == leader_(self) \/ propose0(self) \/ decide0(self)
+                   \/ startBal(self) \/ recover(self) \/ decide(self)
 
 acc_(self) == /\ pc[self] = "acc_"
               /\ \/ /\ \E c \in C:
@@ -829,15 +835,13 @@ acc_(self) == /\ pc[self] = "acc_"
 acc(self) == acc_(self)
 
 Next == (\E self \in ProcSet: Decide(self))
-           \/ (\E self \in C: initialLeader(self))
-           \/ (\E self \in (C \times (Ballot \ {0})): recoveryLeader(self))
+           \/ (\E self \in (C \times Ballot): leader(self))
            \/ (\E self \in P: acc(self))
 
 Spec == Init /\ [][Next]_vars
 
 \* END TRANSLATION
-
 =============================================================================
 \* Modification History
-\* Last modified Mon Mar 21 19:14:58 EDT 2016 by nano
+\* Last modified Tue Mar 22 09:02:07 EDT 2016 by nano
 \* Created Thu Mar 17 21:48:45 EDT 2016 by nano
