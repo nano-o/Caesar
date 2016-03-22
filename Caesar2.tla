@@ -435,7 +435,7 @@ GTE(c, xs) ==
     }
     
     \* Workflow of a decision:
-    procedure Decide(com = CHOOSE c \in C : TRUE, bal = CHOOSE b \in Ballot : TRUE) {
+    procedure Decide(com, bal) {
         decide:     either  { 
         decideFast:     FastDecision(com, bal) }
                     or {
@@ -485,7 +485,8 @@ GTE(c, xs) ==
 \* Label decide of procedure Decide at line 439 col 21 changed to decide_
 \* Label retry of procedure Decide at line 442 col 25 changed to retry_
 \* Label leader of process leader at line 449 col 21 changed to leader_
-\* Label acc of process acc at line 465 col 17 changed to acc_
+\* Label acc of process acc at line 466 col 17 changed to acc_
+CONSTANT defaultInitValue
 VARIABLES ballot, estimate, propose, stable, retry, join, pc, stack
 
 (* define statement *)
@@ -640,8 +641,8 @@ Init == (* Global variables *)
         /\ retry = <<>>
         /\ join = {}
         (* Procedure Decide *)
-        /\ com = [ self \in ProcSet |-> CHOOSE c \in C : TRUE]
-        /\ bal = [ self \in ProcSet |-> CHOOSE b \in Ballot : TRUE]
+        /\ com = [ self \in ProcSet |-> defaultInitValue]
+        /\ bal = [ self \in ProcSet |-> defaultInitValue]
         /\ stack = [self \in ProcSet |-> << >>]
         /\ pc = [self \in ProcSet |-> CASE self \in (C \times Ballot) -> "leader_"
                                         [] self \in P -> "acc_"]
@@ -723,7 +724,7 @@ decide0(self) == /\ pc[self] = "decide0"
 
 startBal(self) == /\ pc[self] = "startBal"
                   /\ Assert((self[2]) > 0, 
-                            "Failure of assertion at line 363, column 9 of macro called at line 455, column 25.")
+                            "Failure of assertion at line 363, column 9 of macro called at line 456, column 25.")
                   /\ join' = (join \cup {<<(self[1]),(self[2])>>})
                   /\ pc' = [pc EXCEPT ![self] = "recover"]
                   /\ UNCHANGED << ballot, estimate, propose, stable, retry, 
@@ -843,5 +844,5 @@ Spec == Init /\ [][Next]_vars
 \* END TRANSLATION
 =============================================================================
 \* Modification History
-\* Last modified Tue Mar 22 09:02:07 EDT 2016 by nano
+\* Last modified Tue Mar 22 10:13:10 EDT 2016 by nano
 \* Created Thu Mar 17 21:48:45 EDT 2016 by nano
