@@ -314,7 +314,7 @@ GTE(c, xs) ==
             } or {    
                 \* The leader triggers the slow path because it timed-out waiting for a fast quorum,
                 \* and it did not receive any "rejected" response to its proposal.
-                when \A p2 \in q : estimate[p2][c][b].status = "accepted";
+                when \A p2 \in q : estimate[p2][c][b].status = "pending";
                 with (ds = UNION {estimate[p2][c][b].seen : p2 \in q}, 
                         t = GTE(c, {<<c, estimate[p2][c][b].ts>> : p2 \in q})) { \* greater than has no effet. Do we need strictly greater?
                     retry := retry ++ <<<<c,b>>, [ts |-> t[2], deps |-> ds]>>;
@@ -846,5 +846,5 @@ Spec == Init /\ [][Next]_vars
 \* END TRANSLATION
 =============================================================================
 \* Modification History
-\* Last modified Thu Mar 24 16:46:37 EDT 2016 by nano
+\* Last modified Sun Mar 27 19:48:39 EDT 2016 by nano
 \* Created Thu Mar 17 21:48:45 EDT 2016 by nano
