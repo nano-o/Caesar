@@ -191,59 +191,23 @@ GTE(c, xs) ==
         Inv3 == \A c \in C, p \in P : 
             c \in SeenCmds(p) /\ MaxEstimate(c,p).status # "stable" => Seen(c,p) \subseteq Deps2(c,p)
         
-        (***************************************************************************)
-        (* This invariant must hold for the execution phase (not formalized here)  *)
-        (* to be correct.                                                          *)
-        (***************************************************************************)
-        GraphInvariant == \A s1 \in DOMAIN stable, s2 \in DOMAIN stable : 
-            LET c1 == s1[1]
-                c2 == s2[1]
-            IN  c1 # c2 /\ <<c1, stable[s1].ts>> \prec <<c2, stable[s2].ts>> =>
-                    c1 \in stable[s2].deps
-        
-        (***************************************************************************)
-        (* The agreement property.                                                 *)
-        (***************************************************************************)
-        
-        (***************************************************************************)
-        (* A command is executable if all its dependencies which have strictly     *)
-        (* lower timestamp are also executable.                                    *)
-        (***************************************************************************)
-        RECURSIVE Executable(_)
-        \* s is of the form <<c,b>>: we are computing wether the result of c as commited in ballot b is executable.
-        Executable(s) == 
-            LET c == s[1]
-                b == s[2] 
-            IN  /\  <<c,b>> \in DOMAIN stable 
-                /\  \A c2 \in stable[<<c,b>>].deps : 
-                    /\  \E s2 \in DOMAIN stable : 
-                        /\  s2[1] = c2
-                        /\  (<<c2, stable[s2].ts>> \prec <<c, stable[s].ts>> => Executable(s2))
-        
-        \* If c is stable and weak agreement holds (see below), this is the unique timestamp of c.
-        TimeStamp(c) == CHOOSE ts \in { s.ts : s \in Image(stable) } : 
-                \E s \in DOMAIN stable :
-                    s[1] = c /\ stable[s].ts = ts
-        
-        \* The "real" dependencies of c when committed with timestamp t and dependencies ds, 
-        \* i.e. ds minus the commands commited with a higher timestamp than t.
-        RealDeps(c, t, ds) ==
-                {d \in ds : <<d,TimeStamp(d)>> \prec <<c,t>> }
-        
         (*******************************************************************)
-        (* If a command c is made stable in two different ballots, then    *)
-        (* its timestamp and real dependencies are the same in both.  Note *)
-        (* that the actual dependency set might be different.              *)
-        Agreement == \A c \in C : \A b1, b2 \in Ballot :
-            /\ <<c,b1>> \in DOMAIN stable /\ <<c,b2>> \in DOMAIN stable 
-            /\ Executable(<<c,b1>>) /\ Executable(<<c,b2>>) 
-            =>  /\  stable[<<c,b1>>].ts = stable[<<c,b2>>].ts
-                /\  RealDeps(c, TimeStamp(c), stable[<<c,b1>>].deps) = 
-                        RealDeps(c, TimeStamp(c), stable[<<c,b2>>].deps) 
+        (* The main correctness properties are GraphInvariant and          *)
+        (* Agreement.  Their conjunction implies correct SMR.              *)
+        (*******************************************************************)
+                
+        GraphInvariant == \A c1, c2 \in C : \A b1, b2 \in Ballot :
+            /\ <<c1,b1>> \in DOMAIN stable 
+            /\ <<c2,b2>> \in DOMAIN stable
+            /\ c1 # c2 
+            /\ <<c1, stable[<<c1,b1>>].ts>> \prec <<c2, stable[<<c2,b2>>].ts>> 
+            => c1 \in stable[<<c2,b2>>].deps
         
-        WeakAgreement == \A c \in C : \A s1, s2 \in DOMAIN stable : 
-            s1[1] = c /\ s2[1] = c => stable[s1].ts = stable[s2].ts
-            
+        Agreement == \A c \in C : \A b1,b2 \in Ballot : 
+            /\ <<c,b1>> \in DOMAIN stable
+            /\ <<c,b2>> \in DOMAIN stable 
+            => stable[<<c,b1>>].ts = stable[<<c,b2>>].ts
+
         Cmd(leader) == leader[1]
         Bal(leader) == leader[2]
         
@@ -272,18 +236,23 @@ GTE(c, xs) ==
                 when \neg Blocked(self, c, t); \* No higher-timestamped command is blocking c.
                 either {
                     when \forall c2 \in SeenCmds(p) : \neg Conflicts(p, c, t, c2); \* There is no conflict.
-                    with ( ds = whitelist[<<c,b>>] \cap (CmdsWithLowerT(p, c, t) \ {c}) ) { \* Collect all commands with a lower timestamp and whitelisted.
-                      \* Add the command to the local estimate:
-                      estimate := [estimate EXCEPT ![p] = [@ EXCEPT ![c] = @ ++ 
-                        <<b, [ts |-> t, status |-> "pending", seen |-> ds, leaderDeps |-> {}]>>]];
+                    if (<<c,b>> \in DOMAIN whitelist) {
+                        estimate := [estimate EXCEPT ![p] = [@ EXCEPT ![c] = @ ++ 
+                            <<b, [ts |-> t, status |-> "pending", seen |-> whitelist[<<c,b>>], leaderDeps |-> {}]>>]];
+                    } else {
+                        \* Collect all commands with a lower timestamp.
+                        estimate := [estimate EXCEPT ![p] = [@ EXCEPT ![c] = @ ++ 
+                          <<b, [ts |-> t, status |-> "pending", seen |-> CmdsWithLowerT(p, c, t) \ {c}, 
+                            leaderDeps |-> {}]>>]];
                     }
                 } or {
+                    \* TODO: no need to send dependencies back in this transition. 
                     when \exists c2 \in SeenCmds(p) : Conflicts(p, c, t, c2); \* There is a conflict.
                     \* Collect all commands received so far; compute a strict upper bound on their timestamp:
-                    with (  ds = SeenCmds(p) \ {c}; t2 = GT(c, TimeStamps(p)) ) { 
-                      \* Add the command to the local estimate:
-                      estimate := [estimate EXCEPT ![p] = [@ EXCEPT ![c] = @ 
-                        ++ <<b, [ts |-> t2[2], status |-> "rejected", seen |-> ds, leaderDeps |-> {}]>>]];
+                    with ( t2 = GT(c, TimeStamps(p)) ) {
+                      \* Record the fact that the command was rejected with t2 (but seen is useless here, as is leaderDeps):
+                      estimate := [estimate EXCEPT ![p] = [@ EXCEPT ![c] = @
+                        ++ <<b, [ts |-> t2[2], status |-> "rejected", seen |-> {}, leaderDeps |-> {}]>>]];
                     }
                 }
             }
@@ -300,7 +269,7 @@ GTE(c, xs) ==
             }
         }
     }
-        
+
     macro Phase2(c, b) {
         with (q \in Quorum) {
             when \A p2 \in q : SeenAt(c, b, p2); \* all acceptors in q have seen c in ballot b.
@@ -311,13 +280,14 @@ GTE(c, xs) ==
                         t = GTE(c, {<<c, estimate[p2][c][b].ts>> : p2 \in q})) {
                     retry := retry ++ <<<<c,b>>, [ts |-> t[2], deps |-> ds]>>;
                 }
-            } or {    
+            } or {
                 \* The leader triggers the slow path because it timed-out waiting for a fast quorum,
                 \* and it did not receive any "rejected" response to its proposal.
                 when \A p2 \in q : estimate[p2][c][b].status = "pending";
-                with (ds = UNION {estimate[p2][c][b].seen : p2 \in q}, 
-                        t = GTE(c, {<<c, estimate[p2][c][b].ts>> : p2 \in q})) { \* greater than has no effet. Do we need strictly greater?
-                    retry := retry ++ <<<<c,b>>, [ts |-> t[2], deps |-> ds]>>;
+                with (  ds = UNION {estimate[p2][c][b].seen : p2 \in q},
+                        p2 = CHOOSE p2 \in q : TRUE,
+                        t = estimate[p2][c][b].ts) {
+                    retry := retry ++ <<<<c,b>>, [ts |-> t, deps |-> ds]>>;
                 }
             }
         }
@@ -330,8 +300,8 @@ GTE(c, xs) ==
             ballot := [ballot EXCEPT ![p] = [@ EXCEPT ![c] = b]];
             \* Only reply if p has not seen c in b or has it pending or rejected in b:
             when b \in DOMAIN estimate[p][c] 
-                => estimate[p][c][b].status \in {"pending", "rejected"};  
-            with (e = retry[<<c, b>>]; seen = (CmdsWithLowerT(p, c, e.ts) \cup e.deps) \ {c}) { \* TODO: do we need the union with the local dependencies?
+                => estimate[p][c][b].status \in {"pending", "rejected"};
+            with (e = retry[<<c, b>>]; seen = (CmdsWithLowerT(p, c, e.ts) \cup e.deps) \ {c}) { \* TODO: do we need the union with the local dependencies? YES
                 estimate := [estimate EXCEPT ![p] = [@ EXCEPT ![c] = @ ++ 
                     <<b, [ts |-> e.ts, status |-> "accepted", seen |-> seen, leaderDeps |-> e.deps]>>]];
             }
@@ -393,7 +363,6 @@ GTE(c, xs) ==
                             \* There is one "rejected" and there is no accept or stable:
                             when \A p2 \in ps : estimate[p2][c][maxBal].status \notin {"accepted","stable"}; 
                             when estimate[p][c][maxBal].status = "rejected";
-                            whitelist := whitelist ++ <<<<c,b>>, C>>;
                             with (t \in Time) { \* use an arbitrary timestamp.
                                 Propose(c, b, t);
                             }
@@ -402,17 +371,17 @@ GTE(c, xs) ==
                             when \A p2 \in ps : estimate[p2][c][maxBal].status \notin {"accepted","stable","rejected"}; 
                             when estimate[p][c][maxBal].status = "pending";
                             with (deps = UNION {estimate[p2][c][maxBal].seen : p2 \in ps};
-                                    wl = {c2 \in deps : (\A q2 \in FastQuorum : (\E p2 \in (ps \cap q2) : c2 \in estimate[p2][c][maxBal].seen))}) {
+                                    wl = {c2 \in deps : (\A q2 \in FastQuorum : 
+                                        \E p2 \in (ps \cap q2) : c2 \in estimate[p2][c][maxBal].seen)}) {
                                 whitelist := whitelist ++ <<<<c,b>>, wl>>;
                             }; 
                             Propose(c, b, estimate[p][c][maxBal].ts);
                         }
                     }
                 } else {
-                    \* No acceptor in ps saw the command.    
-                    \* In practice this should not happen if the new leader is in its received quorum. 
+                    \* No acceptor in ps saw the command.
+                    \* In practice this should not happen if the new leader is in its received quorum.
                     \* Could happen if recovery is triggered by a client.
-                    whitelist := whitelist ++ <<<<c,b>>, C>>;
                     with (t \in Time) {
                        Propose(c, b, t); 
                     }        
@@ -423,14 +392,26 @@ GTE(c, xs) ==
     
     \* Workflow of a decision:
     procedure Decide(com, bal) {
-        decide:     either  { 
+        decide:     either  {
         decideFast:     FastDecision(com, bal);
                     } or {
         retry:          Phase2(com, bal);
         decideSlow:     SlowDecision(com, bal);
                         return; }
     }
-     
+    
+    (* 
+    \* The work flow of a leader:
+    process (simpleLeader \in (C \times Ballot)) {
+        leader:     
+                        when self[2] = 0; \* In ballot 0, directly propose.
+        propose0:       with (t \in Time) { Propose(self[1], 0, t) };
+        decide0:        call Decide(self[1], 0); 
+        decided0:       skip; 
+                    
+    } *)
+    
+    
     \* The work flow of a leader:
     process (leader \in (C \times Ballot)) {
         leader:     either {
@@ -467,10 +448,10 @@ GTE(c, xs) ==
 
 *)
 \* BEGIN TRANSLATION
-\* Label decide of procedure Decide at line 426 col 21 changed to decide_
-\* Label retry of procedure Decide at line 305 col 14 changed to retry_
-\* Label leader of process leader at line 436 col 21 changed to leader_
-\* Label acc of process acc at line 453 col 17 changed to acc_
+\* Label decide of procedure Decide at line 395 col 21 changed to decide_
+\* Label retry of procedure Decide at line 274 col 14 changed to retry_
+\* Label leader of process leader at line 417 col 21 changed to leader_
+\* Label acc of process acc at line 434 col 17 changed to acc_
 CONSTANT defaultInitValue
 VARIABLES ballot, estimate, propose, stable, retry, join, whitelist, pc, 
           stack
@@ -562,54 +543,18 @@ Inv3 == \A c \in C, p \in P :
 
 
 
-GraphInvariant == \A s1 \in DOMAIN stable, s2 \in DOMAIN stable :
-    LET c1 == s1[1]
-        c2 == s2[1]
-    IN  c1 # c2 /\ <<c1, stable[s1].ts>> \prec <<c2, stable[s2].ts>> =>
-            c1 \in stable[s2].deps
 
+GraphInvariant == \A c1, c2 \in C : \A b1, b2 \in Ballot :
+    /\ <<c1,b1>> \in DOMAIN stable
+    /\ <<c2,b2>> \in DOMAIN stable
+    /\ c1 # c2
+    /\ <<c1, stable[<<c1,b1>>].ts>> \prec <<c2, stable[<<c2,b2>>].ts>>
+    => c1 \in stable[<<c2,b2>>].deps
 
-
-
-
-
-
-
-
-RECURSIVE Executable(_)
-
-Executable(s) ==
-    LET c == s[1]
-        b == s[2]
-    IN  /\  <<c,b>> \in DOMAIN stable
-        /\  \A c2 \in stable[<<c,b>>].deps :
-            /\  \E s2 \in DOMAIN stable :
-                /\  s2[1] = c2
-                /\  (<<c2, stable[s2].ts>> \prec <<c, stable[s].ts>> => Executable(s2))
-
-
-TimeStamp(c) == CHOOSE ts \in { s.ts : s \in Image(stable) } :
-        \E s \in DOMAIN stable :
-            s[1] = c /\ stable[s].ts = ts
-
-
-
-RealDeps(c, t, ds) ==
-        {d \in ds : <<d,TimeStamp(d)>> \prec <<c,t>> }
-
-
-
-
-
-Agreement == \A c \in C : \A b1, b2 \in Ballot :
-    /\ <<c,b1>> \in DOMAIN stable /\ <<c,b2>> \in DOMAIN stable
-    /\ Executable(<<c,b1>>) /\ Executable(<<c,b2>>)
-    =>  /\  stable[<<c,b1>>].ts = stable[<<c,b2>>].ts
-        /\  RealDeps(c, TimeStamp(c), stable[<<c,b1>>].deps) =
-                RealDeps(c, TimeStamp(c), stable[<<c,b2>>].deps)
-
-WeakAgreement == \A c \in C : \A s1, s2 \in DOMAIN stable :
-    s1[1] = c /\ s2[1] = c => stable[s1].ts = stable[s2].ts
+Agreement == \A c \in C : \A b1,b2 \in Ballot :
+    /\ <<c,b1>> \in DOMAIN stable
+    /\ <<c,b2>> \in DOMAIN stable
+    => stable[<<c,b1>>].ts = stable[<<c,b2>>].ts
 
 Cmd(leader) == leader[1]
 Bal(leader) == leader[2]
@@ -660,10 +605,11 @@ retry_(self) == /\ pc[self] = "retry_"
                            /\ LET ds == UNION {estimate[p2][com[self]][bal[self]].seen : p2 \in q} IN
                                 LET t == GTE(com[self], {<<com[self], estimate[p2][com[self]][bal[self]].ts>> : p2 \in q}) IN
                                   retry' = retry ++ <<<<com[self],bal[self]>>, [ts |-> t[2], deps |-> ds]>>
-                        \/ /\ \A p2 \in q : estimate[p2][com[self]][bal[self]].status = "accepted"
+                        \/ /\ \A p2 \in q : estimate[p2][com[self]][bal[self]].status = "pending"
                            /\ LET ds == UNION {estimate[p2][com[self]][bal[self]].seen : p2 \in q} IN
-                                LET t == GTE(com[self], {<<com[self], estimate[p2][com[self]][bal[self]].ts>> : p2 \in q}) IN
-                                  retry' = retry ++ <<<<com[self],bal[self]>>, [ts |-> t[2], deps |-> ds]>>
+                                LET p2 == CHOOSE p2 \in q : TRUE IN
+                                  LET t == estimate[p2][com[self]][bal[self]].ts IN
+                                    retry' = retry ++ <<<<com[self],bal[self]>>, [ts |-> t, deps |-> ds]>>
                 /\ pc' = [pc EXCEPT ![self] = "decideSlow"]
                 /\ UNCHANGED << ballot, estimate, propose, stable, join, 
                                 whitelist, stack, com, bal >>
@@ -721,7 +667,7 @@ decided0(self) == /\ pc[self] = "decided0"
 
 startBal(self) == /\ pc[self] = "startBal"
                   /\ Assert((self[2]) > 0, 
-                            "Failure of assertion at line 366, column 9 of macro called at line 444, column 25.")
+                            "Failure of assertion at line 336, column 9 of macro called at line 425, column 25.")
                   /\ join' = (join \cup {<<(self[1]),(self[2])>>})
                   /\ pc' = [pc EXCEPT ![self] = "recover"]
                   /\ UNCHANGED << ballot, estimate, propose, stable, retry, 
@@ -743,24 +689,23 @@ recover(self) == /\ pc[self] = "recover"
                                              /\ UNCHANGED <<propose, whitelist>>
                                           \/ /\ \A p2 \in ps : estimate[p2][(self[1])][maxBal].status \notin {"accepted","stable"}
                                              /\ estimate[p][(self[1])][maxBal].status = "rejected"
-                                             /\ whitelist' = whitelist ++ <<<<(self[1]),(self[2])>>, C>>
                                              /\ \E t \in Time:
                                                   /\ <<(self[1]),(self[2])>> \notin DOMAIN propose
                                                   /\ propose' = propose ++ <<<<(self[1]),(self[2])>>, t>>
-                                             /\ retry' = retry
+                                             /\ UNCHANGED <<retry, whitelist>>
                                           \/ /\ \A p2 \in ps : estimate[p2][(self[1])][maxBal].status \notin {"accepted","stable","rejected"}
                                              /\ estimate[p][(self[1])][maxBal].status = "pending"
                                              /\ LET deps == UNION {estimate[p2][(self[1])][maxBal].seen : p2 \in ps} IN
-                                                  LET wl == {c2 \in deps : (\A q2 \in FastQuorum : (\E p2 \in (ps \cap q2) : c2 \in estimate[p2][(self[1])][maxBal].seen))} IN
+                                                  LET wl ==  {c2 \in deps : (\A q2 \in FastQuorum :
+                                                            \E p2 \in (ps \cap q2) : c2 \in estimate[p2][(self[1])][maxBal].seen)} IN
                                                     whitelist' = whitelist ++ <<<<(self[1]),(self[2])>>, wl>>
                                              /\ <<(self[1]),(self[2])>> \notin DOMAIN propose
                                              /\ propose' = propose ++ <<<<(self[1]),(self[2])>>, (estimate[p][(self[1])][maxBal].ts)>>
                                              /\ retry' = retry
-                              ELSE /\ whitelist' = whitelist ++ <<<<(self[1]),(self[2])>>, C>>
-                                   /\ \E t \in Time:
+                              ELSE /\ \E t \in Time:
                                         /\ <<(self[1]),(self[2])>> \notin DOMAIN propose
                                         /\ propose' = propose ++ <<<<(self[1]),(self[2])>>, t>>
-                                   /\ retry' = retry
+                                   /\ UNCHANGED << retry, whitelist >>
                  /\ pc' = [pc EXCEPT ![self] = "decide"]
                  /\ UNCHANGED << ballot, estimate, stable, join, stack, com, 
                                  bal >>
@@ -797,14 +742,16 @@ acc_(self) == /\ pc[self] = "acc_"
                                 /\ LastBal(c, b, self) < b
                                 /\ \neg Blocked(self, c, t)
                                 /\ \/ /\ \forall c2 \in SeenCmds(self) : \neg Conflicts(self, c, t, c2)
-                                      /\ LET ds == whitelist[<<c,b>>] \cap (CmdsWithLowerT(self, c, t) \ {c}) IN
-                                           estimate' =           [estimate EXCEPT ![self] = [@ EXCEPT ![c] = @ ++
-                                                       <<b, [ts |-> t, status |-> "pending", seen |-> ds, leaderDeps |-> {}]>>]]
+                                      /\ IF <<c,b>> \in DOMAIN whitelist
+                                            THEN /\ estimate' =         [estimate EXCEPT ![self] = [@ EXCEPT ![c] = @ ++
+                                                                <<b, [ts |-> t, status |-> "pending", seen |-> whitelist[<<c,b>>], leaderDeps |-> {}]>>]]
+                                            ELSE /\ estimate' =           [estimate EXCEPT ![self] = [@ EXCEPT ![c] = @ ++
+                                                                <<b, [ts |-> t, status |-> "pending", seen |-> CmdsWithLowerT(self, c, t) \ {c},
+                                                                  leaderDeps |-> {}]>>]]
                                    \/ /\ \exists c2 \in SeenCmds(self) : Conflicts(self, c, t, c2)
-                                      /\ LET ds == SeenCmds(self) \ {c} IN
-                                           LET t2 == GT(c, TimeStamps(self)) IN
-                                             estimate' =           [estimate EXCEPT ![self] = [@ EXCEPT ![c] = @
-                                                         ++ <<b, [ts |-> t2[2], status |-> "rejected", seen |-> ds, leaderDeps |-> {}]>>]]
+                                      /\ LET t2 == GT(c, TimeStamps(self)) IN
+                                           estimate' =           [estimate EXCEPT ![self] = [@ EXCEPT ![c] = @
+                                                       ++ <<b, [ts |-> t2[2], status |-> "rejected", seen |-> {}, leaderDeps |-> {}]>>]]
                  \/ /\ \E c \in C:
                          \E b \in Ballot:
                            /\ b >= ballot[self][c]
@@ -846,5 +793,5 @@ Spec == Init /\ [][Next]_vars
 \* END TRANSLATION
 =============================================================================
 \* Modification History
-\* Last modified Sun Mar 27 19:48:39 EDT 2016 by nano
+\* Last modified Mon Mar 28 16:10:31 EDT 2016 by nano
 \* Created Thu Mar 17 21:48:45 EDT 2016 by nano
