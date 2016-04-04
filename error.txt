@@ -1,0 +1,945 @@
+State1 ==
+/\  ballot = ( p0 :> (c1 :> 0 @@ c2 :> 0) @@
+  p1 :> (c1 :> 0 @@ c2 :> 0) @@
+  p2 :> (c1 :> 0 @@ c2 :> 0) @@
+  p3 :> (c1 :> 0 @@ c2 :> 0) @@
+  p4 :> (c1 :> 0 @@ c2 :> 0) @@
+  p5 :> (c1 :> 0 @@ c2 :> 0) @@
+  p6 :> (c1 :> 0 @@ c2 :> 0) )
+/\  estimate = ( p0 :>
+      ( c1 :> <<>> @@
+        c2 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) ) @@
+  p1 :>
+      ( c1 :> <<>> @@
+        c2 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) ) @@
+  p2 :>
+      ( c1 :> <<>> @@
+        c2 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) ) @@
+  p3 :> (c1 :> <<>> @@ c2 :> <<>>) @@
+  p4 :> (c1 :> <<>> @@ c2 :> <<>>) @@
+  p5 :> (c1 :> <<>> @@ c2 :> <<>>) @@
+  p6 :> (c1 :> <<>> @@ c2 :> <<>>) )
+/\  join = {}
+/\  propose = (<<c2, 0>> :> 1)
+/\  retry = <<>>
+/\  stable = <<>>
+/\  whitelist = <<>>
+
+State2==
+/\  ballot = ( p0 :> (c1 :> 0 @@ c2 :> 0) @@
+  p1 :> (c1 :> 0 @@ c2 :> 0) @@
+  p2 :> (c1 :> 0 @@ c2 :> 0) @@
+  p3 :> (c1 :> 0 @@ c2 :> 0) @@
+  p4 :> (c1 :> 0 @@ c2 :> 0) @@
+  p5 :> (c1 :> 0 @@ c2 :> 0) @@
+  p6 :> (c1 :> 0 @@ c2 :> 0) )
+/\  estimate = ( p0 :>
+      ( c1 :> <<>> @@
+        c2 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) ) @@
+  p1 :>
+      ( c1 :> <<>> @@
+        c2 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) ) @@
+  p2 :>
+      ( c1 :> <<>> @@
+        c2 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) ) @@
+  p3 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) @@
+        c2 :> <<>> ) @@
+  p4 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) @@
+        c2 :> <<>> ) @@
+  p5 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) @@
+        c2 :> <<>> ) @@
+  p6 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) @@
+        c2 :> <<>> ) )
+/\  join = {}
+/\  propose = (<<c1, 0>> :> 1 @@ <<c2, 0>> :> 1)
+/\  retry = <<>>
+/\  stable = <<>>
+/\  whitelist = <<>>
+
+State3 ==
+/\  ballot = ( p0 :> (c1 :> 0 @@ c2 :> 0) @@
+  p1 :> (c1 :> 0 @@ c2 :> 0) @@
+  p2 :> (c1 :> 0 @@ c2 :> 0) @@
+  p3 :> (c1 :> 0 @@ c2 :> 0) @@
+  p4 :> (c1 :> 0 @@ c2 :> 0) @@
+  p5 :> (c1 :> 0 @@ c2 :> 0) @@
+  p6 :> (c1 :> 0 @@ c2 :> 0) )
+/\  estimate = ( p0 :>
+      ( c1 :> <<>> @@
+        c2 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) ) @@
+  p1 :>
+      ( c1 :> <<>> @@
+        c2 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) ) @@
+  p2 :>
+      ( c1 :> <<>> @@
+        c2 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) ) @@
+  p3 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) @@
+        c2 :> <<>> ) @@
+  p4 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) @@
+        c2 :> <<>> ) @@
+  p5 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) @@
+        c2 :> <<>> ) @@
+  p6 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) @@
+        c2 :> <<>> ) )
+/\  join = {<<c2, 1>>}
+/\  propose = (<<c1, 0>> :> 1 @@ <<c2, 0>> :> 1)
+/\  retry = <<>>
+/\  stable = <<>>
+/\  whitelist = <<>>
+
+State4 ==
+/\  ballot = ( p0 :> (c1 :> 0 @@ c2 :> 1) @@
+  p1 :> (c1 :> 0 @@ c2 :> 1) @@
+  p2 :> (c1 :> 0 @@ c2 :> 1) @@
+  p3 :> (c1 :> 0 @@ c2 :> 0) @@
+  p4 :> (c1 :> 0 @@ c2 :> 0) @@
+  p5 :> (c1 :> 0 @@ c2 :> 0) @@
+  p6 :> (c1 :> 0 @@ c2 :> 0) )
+/\  estimate = ( p0 :>
+      ( c1 :> <<>> @@
+        c2 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) ) @@
+  p1 :>
+      ( c1 :> <<>> @@
+        c2 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) ) @@
+  p2 :>
+      ( c1 :> <<>> @@
+        c2 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) ) @@
+  p3 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) @@
+        c2 :> <<>> ) @@
+  p4 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) @@
+        c2 :> <<>> ) @@
+  p5 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) @@
+        c2 :> <<>> ) @@
+  p6 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) @@
+        c2 :> <<>> ) )
+/\  join = {<<c2, 1>>}
+/\  propose = (<<c1, 0>> :> 1 @@ <<c2, 0>> :> 1)
+/\  retry = <<>>
+/\  stable = <<>>
+/\  whitelist = <<>>
+
+State5 ==
+/\  ballot = ( p0 :> (c1 :> 0 @@ c2 :> 1) @@
+  p1 :> (c1 :> 0 @@ c2 :> 1) @@
+  p2 :> (c1 :> 0 @@ c2 :> 1) @@
+  p3 :> (c1 :> 0 @@ c2 :> 1) @@
+  p4 :> (c1 :> 0 @@ c2 :> 0) @@
+  p5 :> (c1 :> 0 @@ c2 :> 0) @@
+  p6 :> (c1 :> 0 @@ c2 :> 0) )
+/\  estimate = ( p0 :>
+      ( c1 :> <<>> @@
+        c2 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) ) @@
+  p1 :>
+      ( c1 :> <<>> @@
+        c2 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) ) @@
+  p2 :>
+      ( c1 :> <<>> @@
+        c2 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) ) @@
+  p3 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) @@
+        c2 :> <<>> ) @@
+  p4 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) @@
+        c2 :> <<>> ) @@
+  p5 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) @@
+        c2 :> <<>> ) @@
+  p6 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) @@
+        c2 :> <<>> ) )
+/\  join = {<<c2, 1>>}
+/\  propose = (<<c1, 0>> :> 1 @@ <<c2, 0>> :> 1 @@ <<c2, 1>> :> 1)
+/\  retry = <<>>
+/\  stable = <<>>
+/\  whitelist = (<<c2, 1>> :> {})
+
+State6 ==
+/\  ballot = ( p0 :> (c1 :> 0 @@ c2 :> 1) @@
+  p1 :> (c1 :> 0 @@ c2 :> 1) @@
+  p2 :> (c1 :> 0 @@ c2 :> 1) @@
+  p3 :> (c1 :> 0 @@ c2 :> 1) @@
+  p4 :> (c1 :> 0 @@ c2 :> 0) @@
+  p5 :> (c1 :> 0 @@ c2 :> 0) @@
+  p6 :> (c1 :> 0 @@ c2 :> 0) )
+/\  estimate = ( p0 :>
+      ( c1 :> <<>> @@
+        c2 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] @@
+              1 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) ) @@
+  p1 :>
+      ( c1 :> <<>> @@
+        c2 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] @@
+              1 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) ) @@
+  p2 :>
+      ( c1 :> <<>> @@
+        c2 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] @@
+              1 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) ) @@
+  p3 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) @@
+        c2 :>
+            << [ ts |-> 1,
+                 seen |-> {},
+                 leaderDeps |-> {},
+                 status |-> "pending" ] >> ) @@
+  p4 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) @@
+        c2 :> <<>> ) @@
+  p5 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) @@
+        c2 :> <<>> ) @@
+  p6 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) @@
+        c2 :> <<>> ) )
+/\  join = {<<c2, 1>>}
+/\  propose = (<<c1, 0>> :> 1 @@ <<c2, 0>> :> 1 @@ <<c2, 1>> :> 1)
+/\  retry = <<>>
+/\  stable = <<>>
+/\  whitelist = (<<c2, 1>> :> {})
+
+State7 ==
+/\  ballot = ( p0 :> (c1 :> 0 @@ c2 :> 1) @@
+  p1 :> (c1 :> 0 @@ c2 :> 1) @@
+  p2 :> (c1 :> 0 @@ c2 :> 1) @@
+  p3 :> (c1 :> 0 @@ c2 :> 1) @@
+  p4 :> (c1 :> 0 @@ c2 :> 0) @@
+  p5 :> (c1 :> 0 @@ c2 :> 0) @@
+  p6 :> (c1 :> 0 @@ c2 :> 0) )
+/\  estimate = ( p0 :>
+      ( c1 :> <<>> @@
+        c2 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] @@
+              1 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) ) @@
+  p1 :>
+      ( c1 :> <<>> @@
+        c2 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] @@
+              1 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) ) @@
+  p2 :>
+      ( c1 :> <<>> @@
+        c2 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] @@
+              1 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) ) @@
+  p3 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) @@
+        c2 :>
+            << [ ts |-> 1,
+                 seen |-> {},
+                 leaderDeps |-> {},
+                 status |-> "pending" ] >> ) @@
+  p4 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) @@
+        c2 :> <<>> ) @@
+  p5 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) @@
+        c2 :> <<>> ) @@
+  p6 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) @@
+        c2 :> <<>> ) )
+/\  join = {<<c2, 1>>}
+/\  propose = (<<c1, 0>> :> 1 @@ <<c2, 0>> :> 1 @@ <<c2, 1>> :> 1)
+/\  retry = (<<c2, 1>> :> [ts |-> 1, deps |-> {}])
+/\  stable = <<>>
+/\  whitelist = (<<c2, 1>> :> {})
+
+State8 ==
+/\  ballot = ( p0 :> (c1 :> 0 @@ c2 :> 1) @@
+  p1 :> (c1 :> 0 @@ c2 :> 1) @@
+  p2 :> (c1 :> 0 @@ c2 :> 1) @@
+  p3 :> (c1 :> 0 @@ c2 :> 1) @@
+  p4 :> (c1 :> 0 @@ c2 :> 0) @@
+  p5 :> (c1 :> 0 @@ c2 :> 0) @@
+  p6 :> (c1 :> 0 @@ c2 :> 0) )
+/\  estimate = ( p0 :>
+      ( c1 :> <<>> @@
+        c2 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] @@
+              1 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "accepted" ] ) ) @@
+  p1 :>
+      ( c1 :> <<>> @@
+        c2 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] @@
+              1 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "accepted" ] ) ) @@
+  p2 :>
+      ( c1 :> <<>> @@
+        c2 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] @@
+              1 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "accepted" ] ) ) @@
+  p3 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) @@
+        c2 :>
+            << [ ts |-> 1,
+                 seen |-> {},
+                 leaderDeps |-> {},
+                 status |-> "accepted" ] >> ) @@
+  p4 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) @@
+        c2 :> <<>> ) @@
+  p5 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) @@
+        c2 :> <<>> ) @@
+  p6 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) @@
+        c2 :> <<>> ) )
+/\  join = {<<c2, 1>>}
+/\  propose = (<<c1, 0>> :> 1 @@ <<c2, 0>> :> 1 @@ <<c2, 1>> :> 1)
+/\  retry = (<<c2, 1>> :> [ts |-> 1, deps |-> {}])
+/\  stable = <<>>
+/\  whitelist = (<<c2, 1>> :> {})
+
+State9 ==
+/\  ballot = ( p0 :> (c1 :> 0 @@ c2 :> 1) @@
+  p1 :> (c1 :> 0 @@ c2 :> 1) @@
+  p2 :> (c1 :> 0 @@ c2 :> 1) @@
+  p3 :> (c1 :> 0 @@ c2 :> 1) @@
+  p4 :> (c1 :> 0 @@ c2 :> 0) @@
+  p5 :> (c1 :> 0 @@ c2 :> 0) @@
+  p6 :> (c1 :> 0 @@ c2 :> 0) )
+/\  estimate = ( p0 :>
+      ( c1 :> <<>> @@
+        c2 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] @@
+              1 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "accepted" ] ) ) @@
+  p1 :>
+      ( c1 :> <<>> @@
+        c2 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] @@
+              1 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "accepted" ] ) ) @@
+  p2 :>
+      ( c1 :> <<>> @@
+        c2 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] @@
+              1 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "accepted" ] ) ) @@
+  p3 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) @@
+        c2 :>
+            << [ ts |-> 1,
+                 seen |-> {},
+                 leaderDeps |-> {},
+                 status |-> "accepted" ] >> ) @@
+  p4 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) @@
+        c2 :> <<>> ) @@
+  p5 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) @@
+        c2 :> <<>> ) @@
+  p6 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) @@
+        c2 :> <<>> ) )
+/\  join = {<<c2, 1>>}
+/\  propose = (<<c1, 0>> :> 1 @@ <<c2, 0>> :> 1 @@ <<c2, 1>> :> 1)
+/\  retry = (<<c2, 1>> :> [ts |-> 1, deps |-> {}])
+/\  stable = (<<c2, 1>> :> [ts |-> 1, deps |-> {}])
+/\  whitelist = (<<c2, 1>> :> {})
+
+State10 ==
+/\  ballot = ( p0 :> (c1 :> 0 @@ c2 :> 1) @@
+  p1 :> (c1 :> 0 @@ c2 :> 1) @@
+  p2 :> (c1 :> 0 @@ c2 :> 1) @@
+  p3 :> (c1 :> 0 @@ c2 :> 1) @@
+  p4 :> (c1 :> 0 @@ c2 :> 0) @@
+  p5 :> (c1 :> 0 @@ c2 :> 0) @@
+  p6 :> (c1 :> 0 @@ c2 :> 0) )
+/\  estimate = ( p0 :>
+      ( c1 :> <<>> @@
+        c2 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] @@
+              1 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "accepted" ] ) ) @@
+  p1 :>
+      ( c1 :> <<>> @@
+        c2 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] @@
+              1 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "accepted" ] ) ) @@
+  p2 :>
+      ( c1 :> <<>> @@
+        c2 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] @@
+              1 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "accepted" ] ) ) @@
+  p3 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) @@
+        c2 :>
+            << [ ts |-> 1,
+                 seen |-> {},
+                 leaderDeps |-> {},
+                 status |-> "accepted" ] >> ) @@
+  p4 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) @@
+        c2 :> <<>> ) @@
+  p5 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) @@
+        c2 :> <<>> ) @@
+  p6 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) @@
+        c2 :> <<>> ) )
+/\  join = {<<c2, 1>>}
+/\  propose = (<<c1, 0>> :> 1 @@ <<c2, 0>> :> 1 @@ <<c2, 1>> :> 1)
+/\  retry = (<<c1, 0>> :> [ts |-> 1, deps |-> {}] @@ <<c2, 1>> :> [ts |-> 1, deps |-> {}])
+/\  stable = (<<c2, 1>> :> [ts |-> 1, deps |-> {}])
+/\  whitelist = (<<c2, 1>> :> {})
+
+State11 ==
+/\  ballot = ( p0 :> (c1 :> 0 @@ c2 :> 1) @@
+  p1 :> (c1 :> 0 @@ c2 :> 1) @@
+  p2 :> (c1 :> 0 @@ c2 :> 1) @@
+  p3 :> (c1 :> 0 @@ c2 :> 1) @@
+  p4 :> (c1 :> 0 @@ c2 :> 0) @@
+  p5 :> (c1 :> 0 @@ c2 :> 0) @@
+  p6 :> (c1 :> 0 @@ c2 :> 0) )
+/\  estimate = ( p0 :>
+      ( c1 :> <<>> @@
+        c2 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] @@
+              1 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "accepted" ] ) ) @@
+  p1 :>
+      ( c1 :> <<>> @@
+        c2 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] @@
+              1 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "accepted" ] ) ) @@
+  p2 :>
+      ( c1 :> <<>> @@
+        c2 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] @@
+              1 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "accepted" ] ) ) @@
+  p3 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "accepted" ] ) @@
+        c2 :>
+            << [ ts |-> 1,
+                 seen |-> {},
+                 leaderDeps |-> {},
+                 status |-> "accepted" ] >> ) @@
+  p4 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "accepted" ] ) @@
+        c2 :> <<>> ) @@
+  p5 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "accepted" ] ) @@
+        c2 :> <<>> ) @@
+  p6 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "accepted" ] ) @@
+        c2 :> <<>> ) )
+/\  join = {<<c2, 1>>}
+/\  propose = (<<c1, 0>> :> 1 @@ <<c2, 0>> :> 1 @@ <<c2, 1>> :> 1)
+/\  retry = (<<c1, 0>> :> [ts |-> 1, deps |-> {}] @@ <<c2, 1>> :> [ts |-> 1, deps |-> {}])
+/\  stable = (<<c2, 1>> :> [ts |-> 1, deps |-> {}])
+/\  whitelist = (<<c2, 1>> :> {})
+
+State12 ==
+/\  ballot = ( p0 :> (c1 :> 0 @@ c2 :> 1) @@
+  p1 :> (c1 :> 0 @@ c2 :> 1) @@
+  p2 :> (c1 :> 0 @@ c2 :> 1) @@
+  p3 :> (c1 :> 0 @@ c2 :> 1) @@
+  p4 :> (c1 :> 0 @@ c2 :> 0) @@
+  p5 :> (c1 :> 0 @@ c2 :> 0) @@
+  p6 :> (c1 :> 0 @@ c2 :> 0) )
+/\  estimate = ( p0 :>
+      ( c1 :> <<>> @@
+        c2 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] @@
+              1 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "accepted" ] ) ) @@
+  p1 :>
+      ( c1 :> <<>> @@
+        c2 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] @@
+              1 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "accepted" ] ) ) @@
+  p2 :>
+      ( c1 :> <<>> @@
+        c2 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] @@
+              1 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "accepted" ] ) ) @@
+  p3 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "accepted" ] ) @@
+        c2 :>
+            << [ ts |-> 1,
+                 seen |-> {},
+                 leaderDeps |-> {},
+                 status |-> "accepted" ] >> ) @@
+  p4 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "accepted" ] ) @@
+        c2 :> <<>> ) @@
+  p5 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "accepted" ] ) @@
+        c2 :> <<>> ) @@
+  p6 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "accepted" ] ) @@
+        c2 :> <<>> ) )
+/\  join = {<<c2, 1>>}
+/\  propose = (<<c1, 0>> :> 1 @@ <<c2, 0>> :> 1 @@ <<c2, 1>> :> 1)
+/\  retry = (<<c1, 0>> :> [ts |-> 1, deps |-> {}] @@ <<c2, 1>> :> [ts |-> 1, deps |-> {}])
+/\  stable = (<<c1, 0>> :> [ts |-> 1, deps |-> {}] @@ <<c2, 1>> :> [ts |-> 1, deps |-> {}])
+/\  whitelist = (<<c2, 1>> :> {})
+
