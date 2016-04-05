@@ -1,0 +1,677 @@
+State 1: <Initial predicate>
+/\ propose = <<>>
+/\ join = {}
+/\ estimate = ( p0 :> (c1 :> <<>> @@ c2 :> <<>>) @@
+  p1 :> (c1 :> <<>> @@ c2 :> <<>>) @@
+  p2 :> (c1 :> <<>> @@ c2 :> <<>>) )
+/\ whitelist = <<>>
+/\ retry = <<>>
+/\ stable = <<>>
+/\ ballot = ( p0 :> (c1 :> 0 @@ c2 :> 0) @@
+  p1 :> (c1 :> 0 @@ c2 :> 0) @@
+  p2 :> (c1 :> 0 @@ c2 :> 0) )
+
+State 2: <Action line 630, col 18 to line 636, col 68 of module Caesar2>
+/\ propose = <<>>
+/\ join = {}
+/\ estimate = ( p0 :> (c1 :> <<>> @@ c2 :> <<>>) @@
+  p1 :> (c1 :> <<>> @@ c2 :> <<>>) @@
+  p2 :> (c1 :> <<>> @@ c2 :> <<>>) )
+/\ whitelist = <<>>
+/\ retry = <<>>
+/\ stable = <<>>
+/\ ballot = ( p0 :> (c1 :> 0 @@ c2 :> 0) @@
+  p1 :> (c1 :> 0 @@ c2 :> 0) @@
+  p2 :> (c1 :> 0 @@ c2 :> 0) )
+
+State 3: <Action line 630, col 18 to line 636, col 68 of module Caesar2>
+/\ propose = <<>>
+/\ join = {}
+/\ estimate = ( p0 :> (c1 :> <<>> @@ c2 :> <<>>) @@
+  p1 :> (c1 :> <<>> @@ c2 :> <<>>) @@
+  p2 :> (c1 :> <<>> @@ c2 :> <<>>) )
+/\ whitelist = <<>>
+/\ retry = <<>>
+/\ stable = <<>>
+/\ ballot = ( p0 :> (c1 :> 0 @@ c2 :> 0) @@
+  p1 :> (c1 :> 0 @@ c2 :> 0) @@
+  p2 :> (c1 :> 0 @@ c2 :> 0) )
+
+State 4: <Action line 638, col 19 to line 644, col 63 of module Caesar2>
+/\ propose = (<<c1, 0>> :> 1)
+/\ join = {}
+/\ estimate = ( p0 :> (c1 :> <<>> @@ c2 :> <<>>) @@
+  p1 :> (c1 :> <<>> @@ c2 :> <<>>) @@
+  p2 :> (c1 :> <<>> @@ c2 :> <<>>) )
+/\ whitelist = <<>>
+/\ retry = <<>>
+/\ stable = <<>>
+/\ ballot = ( p0 :> (c1 :> 0 @@ c2 :> 0) @@
+  p1 :> (c1 :> 0 @@ c2 :> 0) @@
+  p2 :> (c1 :> 0 @@ c2 :> 0) )
+
+State 5: <Action line 646, col 18 to line 656, col 51 of module Caesar2>
+/\ propose = (<<c1, 0>> :> 1)
+/\ join = {}
+/\ estimate = ( p0 :> (c1 :> <<>> @@ c2 :> <<>>) @@
+  p1 :> (c1 :> <<>> @@ c2 :> <<>>) @@
+  p2 :> (c1 :> <<>> @@ c2 :> <<>>) )
+/\ whitelist = <<>>
+/\ retry = <<>>
+/\ stable = <<>>
+/\ ballot = ( p0 :> (c1 :> 0 @@ c2 :> 0) @@
+  p1 :> (c1 :> 0 @@ c2 :> 0) @@
+  p2 :> (c1 :> 0 @@ c2 :> 0) )
+
+State 6: <Action line 580, col 18 to line 584, col 68 of module Caesar2>
+/\ propose = (<<c1, 0>> :> 1)
+/\ join = {}
+/\ estimate = ( p0 :> (c1 :> <<>> @@ c2 :> <<>>) @@
+  p1 :> (c1 :> <<>> @@ c2 :> <<>>) @@
+  p2 :> (c1 :> <<>> @@ c2 :> <<>>) )
+/\ whitelist = <<>>
+/\ retry = <<>>
+/\ stable = <<>>
+/\ ballot = ( p0 :> (c1 :> 0 @@ c2 :> 0) @@
+  p1 :> (c1 :> 0 @@ c2 :> 0) @@
+  p2 :> (c1 :> 0 @@ c2 :> 0) )
+
+State 7: <Action line 638, col 19 to line 644, col 63 of module Caesar2>
+/\ propose = (<<c1, 0>> :> 1 @@ <<c2, 0>> :> 1)
+/\ join = {}
+/\ estimate = ( p0 :> (c1 :> <<>> @@ c2 :> <<>>) @@
+  p1 :> (c1 :> <<>> @@ c2 :> <<>>) @@
+  p2 :> (c1 :> <<>> @@ c2 :> <<>>) )
+/\ whitelist = <<>>
+/\ retry = <<>>
+/\ stable = <<>>
+/\ ballot = ( p0 :> (c1 :> 0 @@ c2 :> 0) @@
+  p1 :> (c1 :> 0 @@ c2 :> 0) @@
+  p2 :> (c1 :> 0 @@ c2 :> 0) )
+
+State 8: <Action line 630, col 18 to line 636, col 68 of module Caesar2>
+/\ propose = (<<c1, 0>> :> 1 @@ <<c2, 0>> :> 1)
+/\ join = {}
+/\ estimate = ( p0 :> (c1 :> <<>> @@ c2 :> <<>>) @@
+  p1 :> (c1 :> <<>> @@ c2 :> <<>>) @@
+  p2 :> (c1 :> <<>> @@ c2 :> <<>>) )
+/\ whitelist = <<>>
+/\ retry = <<>>
+/\ stable = <<>>
+/\ ballot = ( p0 :> (c1 :> 0 @@ c2 :> 0) @@
+  p1 :> (c1 :> 0 @@ c2 :> 0) @@
+  p2 :> (c1 :> 0 @@ c2 :> 0) )
+
+State 9: <Action line 664, col 19 to line 670, col 63 of module Caesar2>
+/\ propose = (<<c1, 0>> :> 1 @@ <<c2, 0>> :> 1)
+/\ join = {<<c2, 1>>}
+/\ estimate = ( p0 :> (c1 :> <<>> @@ c2 :> <<>>) @@
+  p1 :> (c1 :> <<>> @@ c2 :> <<>>) @@
+  p2 :> (c1 :> <<>> @@ c2 :> <<>>) )
+/\ whitelist = <<>>
+/\ retry = <<>>
+/\ stable = <<>>
+/\ ballot = ( p0 :> (c1 :> 0 @@ c2 :> 0) @@
+  p1 :> (c1 :> 0 @@ c2 :> 0) @@
+  p2 :> (c1 :> 0 @@ c2 :> 0) )
+
+State 10: <Action line 731, col 15 to line 780, col 41 of module Caesar2>
+/\ propose = (<<c1, 0>> :> 1 @@ <<c2, 0>> :> 1)
+/\ join = {<<c2, 1>>}
+/\ estimate = ( p0 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) @@
+        c2 :> <<>> ) @@
+  p1 :> (c1 :> <<>> @@ c2 :> <<>>) @@
+  p2 :> (c1 :> <<>> @@ c2 :> <<>>) )
+/\ whitelist = <<>>
+/\ retry = <<>>
+/\ stable = <<>>
+/\ ballot = ( p0 :> (c1 :> 0 @@ c2 :> 0) @@
+  p1 :> (c1 :> 0 @@ c2 :> 0) @@
+  p2 :> (c1 :> 0 @@ c2 :> 0) )
+
+State 11: <Action line 731, col 15 to line 780, col 41 of module Caesar2>
+/\ propose = (<<c1, 0>> :> 1 @@ <<c2, 0>> :> 1)
+/\ join = {<<c2, 1>>}
+/\ estimate = ( p0 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) @@
+        c2 :> <<>> ) @@
+  p1 :> (c1 :> <<>> @@ c2 :> <<>>) @@
+  p2 :> (c1 :> <<>> @@ c2 :> <<>>) )
+/\ whitelist = <<>>
+/\ retry = <<>>
+/\ stable = <<>>
+/\ ballot = ( p0 :> (c1 :> 0 @@ c2 :> 1) @@
+  p1 :> (c1 :> 0 @@ c2 :> 0) @@
+  p2 :> (c1 :> 0 @@ c2 :> 0) )
+
+State 12: <Action line 731, col 15 to line 780, col 41 of module Caesar2>
+/\ propose = (<<c1, 0>> :> 1 @@ <<c2, 0>> :> 1)
+/\ join = {<<c2, 1>>}
+/\ estimate = ( p0 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) @@
+        c2 :> <<>> ) @@
+  p1 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) @@
+        c2 :> <<>> ) @@
+  p2 :> (c1 :> <<>> @@ c2 :> <<>>) )
+/\ whitelist = <<>>
+/\ retry = <<>>
+/\ stable = <<>>
+/\ ballot = ( p0 :> (c1 :> 0 @@ c2 :> 1) @@
+  p1 :> (c1 :> 0 @@ c2 :> 0) @@
+  p2 :> (c1 :> 0 @@ c2 :> 0) )
+
+State 13: <Action line 597, col 17 to line 611, col 61 of module Caesar2>
+/\ propose = (<<c1, 0>> :> 1 @@ <<c2, 0>> :> 1)
+/\ join = {<<c2, 1>>}
+/\ estimate = ( p0 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) @@
+        c2 :> <<>> ) @@
+  p1 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) @@
+        c2 :> <<>> ) @@
+  p2 :> (c1 :> <<>> @@ c2 :> <<>>) )
+/\ whitelist = <<>>
+/\ retry = (<<c1, 0>> :> [ts |-> 1, deps |-> {}])
+/\ stable = <<>>
+/\ ballot = ( p0 :> (c1 :> 0 @@ c2 :> 1) @@
+  p1 :> (c1 :> 0 @@ c2 :> 0) @@
+  p2 :> (c1 :> 0 @@ c2 :> 0) )
+
+State 14: <Action line 731, col 15 to line 780, col 41 of module Caesar2>
+/\ propose = (<<c1, 0>> :> 1 @@ <<c2, 0>> :> 1)
+/\ join = {<<c2, 1>>}
+/\ estimate = ( p0 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) @@
+        c2 :> <<>> ) @@
+  p1 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) @@
+        c2 :> <<>> ) @@
+  p2 :>
+      ( c1 :> <<>> @@
+        c2 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) ) )
+/\ whitelist = <<>>
+/\ retry = (<<c1, 0>> :> [ts |-> 1, deps |-> {}])
+/\ stable = <<>>
+/\ ballot = ( p0 :> (c1 :> 0 @@ c2 :> 1) @@
+  p1 :> (c1 :> 0 @@ c2 :> 0) @@
+  p2 :> (c1 :> 0 @@ c2 :> 0) )
+
+State 15: <Action line 731, col 15 to line 780, col 41 of module Caesar2>
+/\ propose = (<<c1, 0>> :> 1 @@ <<c2, 0>> :> 1)
+/\ join = {<<c2, 1>>}
+/\ estimate = ( p0 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) @@
+        c2 :> <<>> ) @@
+  p1 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) @@
+        c2 :> <<>> ) @@
+  p2 :>
+      ( c1 :> <<>> @@
+        c2 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) ) )
+/\ whitelist = <<>>
+/\ retry = (<<c1, 0>> :> [ts |-> 1, deps |-> {}])
+/\ stable = <<>>
+/\ ballot = ( p0 :> (c1 :> 0 @@ c2 :> 1) @@
+  p1 :> (c1 :> 0 @@ c2 :> 0) @@
+  p2 :> (c1 :> 0 @@ c2 :> 1) )
+
+State 16: <Action line 672, col 18 to line 707, col 39 of module Caesar2>
+/\ propose = (<<c1, 0>> :> 1 @@ <<c2, 0>> :> 1 @@ <<c2, 1>> :> 1)
+/\ join = {<<c2, 1>>}
+/\ estimate = ( p0 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) @@
+        c2 :> <<>> ) @@
+  p1 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) @@
+        c2 :> <<>> ) @@
+  p2 :>
+      ( c1 :> <<>> @@
+        c2 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) ) )
+/\ whitelist = (<<c2, 1>> :> {})
+/\ retry = (<<c1, 0>> :> [ts |-> 1, deps |-> {}])
+/\ stable = <<>>
+/\ ballot = ( p0 :> (c1 :> 0 @@ c2 :> 1) @@
+  p1 :> (c1 :> 0 @@ c2 :> 0) @@
+  p2 :> (c1 :> 0 @@ c2 :> 1) )
+
+State 17: <Action line 709, col 17 to line 719, col 44 of module Caesar2>
+/\ propose = (<<c1, 0>> :> 1 @@ <<c2, 0>> :> 1 @@ <<c2, 1>> :> 1)
+/\ join = {<<c2, 1>>}
+/\ estimate = ( p0 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) @@
+        c2 :> <<>> ) @@
+  p1 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) @@
+        c2 :> <<>> ) @@
+  p2 :>
+      ( c1 :> <<>> @@
+        c2 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) ) )
+/\ whitelist = (<<c2, 1>> :> {})
+/\ retry = (<<c1, 0>> :> [ts |-> 1, deps |-> {}])
+/\ stable = <<>>
+/\ ballot = ( p0 :> (c1 :> 0 @@ c2 :> 1) @@
+  p1 :> (c1 :> 0 @@ c2 :> 0) @@
+  p2 :> (c1 :> 0 @@ c2 :> 1) )
+
+State 18: <Action line 580, col 18 to line 584, col 68 of module Caesar2>
+/\ propose = (<<c1, 0>> :> 1 @@ <<c2, 0>> :> 1 @@ <<c2, 1>> :> 1)
+/\ join = {<<c2, 1>>}
+/\ estimate = ( p0 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) @@
+        c2 :> <<>> ) @@
+  p1 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) @@
+        c2 :> <<>> ) @@
+  p2 :>
+      ( c1 :> <<>> @@
+        c2 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) ) )
+/\ whitelist = (<<c2, 1>> :> {})
+/\ retry = (<<c1, 0>> :> [ts |-> 1, deps |-> {}])
+/\ stable = <<>>
+/\ ballot = ( p0 :> (c1 :> 0 @@ c2 :> 1) @@
+  p1 :> (c1 :> 0 @@ c2 :> 0) @@
+  p2 :> (c1 :> 0 @@ c2 :> 1) )
+
+State 19: <Action line 731, col 15 to line 780, col 41 of module Caesar2>
+/\ propose = (<<c1, 0>> :> 1 @@ <<c2, 0>> :> 1 @@ <<c2, 1>> :> 1)
+/\ join = {<<c2, 1>>}
+/\ estimate = ( p0 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) @@
+        c2 :>
+            << [ ts |-> 1,
+                 seen |-> {},
+                 leaderDeps |-> {},
+                 status |-> "pending" ] >> ) @@
+  p1 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) @@
+        c2 :> <<>> ) @@
+  p2 :>
+      ( c1 :> <<>> @@
+        c2 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) ) )
+/\ whitelist = (<<c2, 1>> :> {})
+/\ retry = (<<c1, 0>> :> [ts |-> 1, deps |-> {}])
+/\ stable = <<>>
+/\ ballot = ( p0 :> (c1 :> 0 @@ c2 :> 1) @@
+  p1 :> (c1 :> 0 @@ c2 :> 0) @@
+  p2 :> (c1 :> 0 @@ c2 :> 1) )
+
+State 20: <Action line 731, col 15 to line 780, col 41 of module Caesar2>
+/\ propose = (<<c1, 0>> :> 1 @@ <<c2, 0>> :> 1 @@ <<c2, 1>> :> 1)
+/\ join = {<<c2, 1>>}
+/\ estimate = ( p0 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "accepted" ] ) @@
+        c2 :>
+            << [ ts |-> 1,
+                 seen |-> {},
+                 leaderDeps |-> {},
+                 status |-> "pending" ] >> ) @@
+  p1 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) @@
+        c2 :> <<>> ) @@
+  p2 :>
+      ( c1 :> <<>> @@
+        c2 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) ) )
+/\ whitelist = (<<c2, 1>> :> {})
+/\ retry = (<<c1, 0>> :> [ts |-> 1, deps |-> {}])
+/\ stable = <<>>
+/\ ballot = ( p0 :> (c1 :> 0 @@ c2 :> 1) @@
+  p1 :> (c1 :> 0 @@ c2 :> 0) @@
+  p2 :> (c1 :> 0 @@ c2 :> 1) )
+
+State 21: <Action line 731, col 15 to line 780, col 41 of module Caesar2>
+/\ propose = (<<c1, 0>> :> 1 @@ <<c2, 0>> :> 1 @@ <<c2, 1>> :> 1)
+/\ join = {<<c2, 1>>}
+/\ estimate = ( p0 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "accepted" ] ) @@
+        c2 :>
+            << [ ts |-> 1,
+                 seen |-> {},
+                 leaderDeps |-> {},
+                 status |-> "pending" ] >> ) @@
+  p1 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) @@
+        c2 :>
+            << [ ts |-> 1,
+                 seen |-> {},
+                 leaderDeps |-> {},
+                 status |-> "pending" ] >> ) @@
+  p2 :>
+      ( c1 :> <<>> @@
+        c2 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) ) )
+/\ whitelist = (<<c2, 1>> :> {})
+/\ retry = (<<c1, 0>> :> [ts |-> 1, deps |-> {}])
+/\ stable = <<>>
+/\ ballot = ( p0 :> (c1 :> 0 @@ c2 :> 1) @@
+  p1 :> (c1 :> 0 @@ c2 :> 1) @@
+  p2 :> (c1 :> 0 @@ c2 :> 1) )
+
+State 22: <Action line 731, col 15 to line 780, col 41 of module Caesar2>
+/\ propose = (<<c1, 0>> :> 1 @@ <<c2, 0>> :> 1 @@ <<c2, 1>> :> 1)
+/\ join = {<<c2, 1>>}
+/\ estimate = ( p0 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "accepted" ] ) @@
+        c2 :>
+            << [ ts |-> 1,
+                 seen |-> {},
+                 leaderDeps |-> {},
+                 status |-> "pending" ] >> ) @@
+  p1 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "accepted" ] ) @@
+        c2 :>
+            << [ ts |-> 1,
+                 seen |-> {},
+                 leaderDeps |-> {},
+                 status |-> "pending" ] >> ) @@
+  p2 :>
+      ( c1 :> <<>> @@
+        c2 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) ) )
+/\ whitelist = (<<c2, 1>> :> {})
+/\ retry = (<<c1, 0>> :> [ts |-> 1, deps |-> {}])
+/\ stable = <<>>
+/\ ballot = ( p0 :> (c1 :> 0 @@ c2 :> 1) @@
+  p1 :> (c1 :> 0 @@ c2 :> 1) @@
+  p2 :> (c1 :> 0 @@ c2 :> 1) )
+
+State 23: <Action line 613, col 21 to line 625, col 48 of module Caesar2>
+/\ propose = (<<c1, 0>> :> 1 @@ <<c2, 0>> :> 1 @@ <<c2, 1>> :> 1)
+/\ join = {<<c2, 1>>}
+/\ estimate = ( p0 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "accepted" ] ) @@
+        c2 :>
+            << [ ts |-> 1,
+                 seen |-> {},
+                 leaderDeps |-> {},
+                 status |-> "pending" ] >> ) @@
+  p1 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "accepted" ] ) @@
+        c2 :>
+            << [ ts |-> 1,
+                 seen |-> {},
+                 leaderDeps |-> {},
+                 status |-> "pending" ] >> ) @@
+  p2 :>
+      ( c1 :> <<>> @@
+        c2 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) ) )
+/\ whitelist = (<<c2, 1>> :> {})
+/\ retry = (<<c1, 0>> :> [ts |-> 1, deps |-> {}])
+/\ stable = (<<c1, 0>> :> [ts |-> 1, deps |-> {}])
+/\ ballot = ( p0 :> (c1 :> 0 @@ c2 :> 1) @@
+  p1 :> (c1 :> 0 @@ c2 :> 1) @@
+  p2 :> (c1 :> 0 @@ c2 :> 1) )
+
+State 24: <Action line 731, col 15 to line 780, col 41 of module Caesar2>
+/\ propose = (<<c1, 0>> :> 1 @@ <<c2, 0>> :> 1 @@ <<c2, 1>> :> 1)
+/\ join = {<<c2, 1>>}
+/\ estimate = ( p0 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "accepted" ] ) @@
+        c2 :>
+            << [ ts |-> 1,
+                 seen |-> {},
+                 leaderDeps |-> {},
+                 status |-> "pending" ] >> ) @@
+  p1 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "accepted" ] ) @@
+        c2 :>
+            << [ ts |-> 1,
+                 seen |-> {},
+                 leaderDeps |-> {},
+                 status |-> "pending" ] >> ) @@
+  p2 :>
+      ( c1 :> <<>> @@
+        c2 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] @@
+              1 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) ) )
+/\ whitelist = (<<c2, 1>> :> {})
+/\ retry = (<<c1, 0>> :> [ts |-> 1, deps |-> {}])
+/\ stable = (<<c1, 0>> :> [ts |-> 1, deps |-> {}])
+/\ ballot = ( p0 :> (c1 :> 0 @@ c2 :> 1) @@
+  p1 :> (c1 :> 0 @@ c2 :> 1) @@
+  p2 :> (c1 :> 0 @@ c2 :> 1) )
+
+State 25: <Action line 586, col 21 to line 595, col 65 of module Caesar2>
+/\ propose = (<<c1, 0>> :> 1 @@ <<c2, 0>> :> 1 @@ <<c2, 1>> :> 1)
+/\ join = {<<c2, 1>>}
+/\ estimate = ( p0 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "accepted" ] ) @@
+        c2 :>
+            << [ ts |-> 1,
+                 seen |-> {},
+                 leaderDeps |-> {},
+                 status |-> "pending" ] >> ) @@
+  p1 :>
+      ( c1 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "accepted" ] ) @@
+        c2 :>
+            << [ ts |-> 1,
+                 seen |-> {},
+                 leaderDeps |-> {},
+                 status |-> "pending" ] >> ) @@
+  p2 :>
+      ( c1 :> <<>> @@
+        c2 :>
+            ( 0 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] @@
+              1 :>
+                  [ ts |-> 1,
+                    seen |-> {},
+                    leaderDeps |-> {},
+                    status |-> "pending" ] ) ) )
+/\ whitelist = (<<c2, 1>> :> {})
+/\ retry = (<<c1, 0>> :> [ts |-> 1, deps |-> {}])
+/\ stable = (<<c1, 0>> :> [ts |-> 1, deps |-> {}] @@ <<c2, 1>> :> [ts |-> 1, deps |-> {}])
+/\ ballot = ( p0 :> (c1 :> 0 @@ c2 :> 1) @@
+  p1 :> (c1 :> 0 @@ c2 :> 1) @@
+  p2 :> (c1 :> 0 @@ c2 :> 1) )
+
