@@ -224,6 +224,7 @@ Max(xs) == CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
                     skip; 
                 } else if (mbal[2] = 2) {
                     skip; \* Here, how to guarantee that commands see each other? We may not have a full quorum...
+                    \* Same approach as in starting phase3 above should work.
                 } else if (mbal[2] = 3) {
                     with (p \in {p \in P : LastBal(c, <<b-1,3>>, p) = mbal}) {
                         propose := propose ++ <<<<c, <<b,3>>>>, vote[p][c][mbal]>>;
@@ -455,5 +456,5 @@ Spec == Init /\ [][Next]_vars
 
 =============================================================================
 \* Modification History
-\* Last modified Wed Apr 06 02:20:39 EDT 2016 by nano
+\* Last modified Wed Apr 06 02:24:50 EDT 2016 by nano
 \* Created Tue Apr 05 09:07:07 EDT 2016 by nano
