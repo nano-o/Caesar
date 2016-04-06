@@ -59,14 +59,15 @@ Max(xs) == CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
         ballot = [p \in P |-> [c \in C |-> <<0,1>>]],
         vote = [p \in P |-> [c \in C |-> <<>>]],
         joinBallot = {},
-        propose = <<>>,
+        propose = <<>>
 
     define {
         
         TypeInvariant ==
             /\  \A p \in P, c \in C : ballot[p][c] \in Ballot
-            /\  \A p \in P, c \in C : \E D \in SUBSET Ballot : vote[p][c] \in [D -> SUBSET C]
+            /\  \A p \in P, c \in C : \E D \in SUBSET Ballot : vote[p][c] \in [D -> [strong : SUBSET C, weak : SUBSET C]]
             /\  joinBallot \subseteq (C \times Ballot)
+            /\  \E D \in SUBSET (C \times Ballot) : propose \in [D -> [strong : SUBSET C, weak : SUBSET C]]
         
         \* TRUE if c was seen in ballot B.
         SeenAt(c, bal, p) == bal \in DOMAIN vote[p][c]
@@ -95,6 +96,12 @@ Max(xs) == CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
             LET b == LastBal(c, Max(Ballot), p)
             IN  <<-1,-1>> \prec b => b \in DOMAIN vote[p][c]
             
+        Inv2 == \A prop \in Image(propose) : prop.weak \cap prop.strong = {}
+        
+        PossibleFastDeps(c, b, q) ==
+            {ds \in SUBSET C : \E q2 \in FastQuorum :
+                            \A p \in q2 \cap q : vote[p][c][<<b,1>>].strong = ds}
+            
         Cmd(leader) == leader[1]
         Bal(leader) == leader[2]
         
@@ -107,12 +114,12 @@ Max(xs) == CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
             bal \in DOMAIN vote[p][c2] /\ c \notin vote[p][c2][bal]}
         
         Decided(c, deps) ==
-            \/  \E b \in Phase1Bals : \E q \in FastQuorum : 
+            \/  \E b \in Phase1Bals : \E q \in FastQuorum :
                     \A p \in q : b \in DOMAIN vote[p][c] /\ vote[p][c][b] = deps
-            \/  \E b \in Phase2Bals  : \E q \in FastQuorum :
+            \/  \E b \in Phase2Bals  : \E q \in (*Fast*)Quorum :
                     \A p \in q : b \in DOMAIN vote[p][c] /\ vote[p][c][b] = deps
-            \/  \E b \in Phase3Bals : \E q \in Quorum :
-                    \A p \in q : b \in DOMAIN vote[p][c] /\ vote[p][c][b] = deps
+            (*\/  \E b \in Phase3Bals : \E q \in Quorum :
+                    \A p \in q : b \in DOMAIN vote[p][c] /\ vote[p][c][b] = deps *)
                     
         Decisions == {d \in C \times SUBSET C : Decided(d[1],d[2])}
         
@@ -122,17 +129,25 @@ Max(xs) == CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
         (* Replication.                                                    *)
         (*******************************************************************)
                 
-        GraphInvariant == \A c1, c2 \in C : \A deps1, deps2 \in SUBSET C :
+        (*******************************************************************)
+        (* Commands see each other                                         *)
+        (*******************************************************************)
+        GraphInvariant == \A c1, c2 \in C : \A deps1, deps2 \in [strong : SUBSET C, weak : SUBSET C] :
             /\  Decided(c1, deps1)
             /\  Decided(c2, deps2)
             /\ c1 # c2 
-            =>  \/  c2 \in deps1
-                \/  c1 \in deps2
+            /\ c2 \notin deps1.strong 
+            /\ c1 \notin deps2.strong
+            => c2 \in deps1.weak \/ c1 \in deps2.weak
         
-        Agreement == \A c \in C : \A deps1, deps2 \in SUBSET C :
+        (*******************************************************************)
+        (* Two ballots agree on strong dependencies.                       *)
+        (*******************************************************************)
+        Agreement == \A c \in C : \A deps1, deps2 \in [strong : SUBSET C, weak : SUBSET C] :
             /\ Decided(c, deps1)
             /\ Decided(c, deps2) 
-            => deps1 = deps2
+            => deps1.strong = deps2.strong
+             
         
     }
     
@@ -145,14 +160,14 @@ Max(xs) == CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
     (***********************************************************************)
     macro Phase1(c, bal) {
         assert bal[2] = 1;
-        propose := propose ++ <<<<c,bal>>, {}>>;
+        propose := propose ++ <<<<c,bal>>, [strong |-> {}, weak |-> {}]>>; \* the value mapped to is not used in phase 1 ballots.
     }
     
     macro Phase1Reply(p) {
         with (c \in C; bal \in Phase1Bals) {
             when <<c, bal>> \in DOMAIN propose /\ ballot[p][c] \preceq bal;
             when LastBal(c, bal, p) \prec bal; \* p has not participated yet in this ballot. 
-            vote := [vote EXCEPT ![p] = [@ EXCEPT ![c] = @ ++ <<bal, Phase1SeenCmds(p)>>]];
+            vote := [vote EXCEPT ![p] = [@ EXCEPT ![c] = @ ++ <<bal, [strong |-> Phase1SeenCmds(p), weak |-> {}]>>]];
             \* A response to a phase1Bal means joining phase2:
             ballot := [ballot EXCEPT ![p] = [@ EXCEPT ![c] = <<bal[1], 2>>]];
         }
@@ -162,17 +177,17 @@ Max(xs) == CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
         assert bal[2] = 2;
         with (q \in Quorum) {
             when \A p \in q : bal \preceq ballot[p][c];
-            \* if c could have been decided fast:
-            if (\E ds \in SUBSET C : \E q2 \in FastQuorum :
-                        \A p \in q2 \cap q : vote[p][c][<<bal[1],1>>] = ds) {
-                with (ds \in {ds \in SUBSET C : \E q2 \in FastQuorum :
-                        \A p \in q2 \cap q : vote[p][c][<<bal[1],1>>] = ds}) {
-                    propose := propose ++ <<<<c, bal>>, ds>>; \* Propose in phase 2
+            with (  depsUnion = UNION {vote[p][c][<<bal[1],1>>].strong : p \in q};
+                    fastDeps = PossibleFastDeps(c, bal[1], q)) {
+                assert Cardinality(fastDeps) <= 1; \* sanity check.
+                if (fastDeps # {}) { \* if c could have been decided fast:
+                    with (ds \in fastDeps) {
+                        propose := propose ++ <<<<c, bal>>, [strong |-> ds, weak |-> depsUnion \ ds]>>;
+                    }
+                } else {
+                    propose := propose ++ <<<<c, <<bal[1],2>>>>, [strong |-> depsUnion, weak |-> {}]>>;
                 }
-            } else { \* propose in phase 3.
-                propose := propose ++ <<<<c, <<bal[1],3>>>>, 
-                    UNION {vote[p][c][<<bal[1],1>>] : p \in q}>>; 
-            };
+            }
         }
     }
     
@@ -181,38 +196,9 @@ Max(xs) == CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
             when <<c, bal>> \in DOMAIN propose /\ ballot[p][c] \preceq bal;
             when LastBal(c, bal, p) \prec bal; \* p has not participated yet in this ballot. 
             vote := [vote EXCEPT ![p] = [@ EXCEPT ![c] = 
-                @ ++ <<bal, propose[<<c, bal>>] \cup Phase2SeenCmds(p, c)>>]]; \* union to guarantee that commands see each other.
-            \* A response to a phase1Bal means joining phase 3:
-            ballot := [ballot EXCEPT ![p] = [@ EXCEPT ![c] = <<bal[1], 3>>]];
-        }
-    }
-    
-    macro Phase3(c, bal) {
-        assert bal[2] = 3;
-        when <<c, bal>> \notin DOMAIN propose;
-        with (q \in Quorum) {
-            when \A p \in q : bal \preceq ballot[p][c];
-            \* if c could have been decided fast:
-            if (\E ds \in SUBSET C : \E q2 \in FastQuorum :
-                        \A p \in q2 \cap q : vote[p][c][<<bal[1],2>>] = ds) {
-                with (ds \in {ds \in SUBSET C : \E q2 \in FastQuorum :
-                        \A p \in q2 \cap q : vote[p][c][<<bal[1],2>>] = ds}) {
-                    propose := propose ++ <<<<c, bal>>, ds>>;
-                }
-            } else {
-                propose := propose ++ <<<<c, <<bal[1],3>>>>, 
-                    UNION {vote[p][c][<<bal[1],2>>] : p \in q}>>; \* union to guarantee that commands see each other.
-            };
-        }
-    }
-    
-    macro Phase3Reply(p) {
-        with (c \in C; bal \in Phase3Bals) {
-            when <<c, bal>> \in DOMAIN propose /\ ballot[p][c] \preceq bal;
-            when LastBal(c, bal, p) \prec bal; \* p has not participated yet in this ballot. 
-            vote := [vote EXCEPT ![p] = [@ EXCEPT ![c] = 
                 @ ++ <<bal, propose[<<c, bal>>]>>]];
-            ballot := [ballot EXCEPT ![p] = [@ EXCEPT ![c] = <<bal[1], 3>>]];
+            \* Join ballot if not already there.
+            ballot := [ballot EXCEPT ![p] = [@ EXCEPT ![c] = <<bal[1], 2>>]];
         }
     }
     
@@ -237,7 +223,7 @@ Max(xs) == CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
     process (initLeader \in (C \times {0})) {
         propose:    Phase1(self[1], <<0,1>>);
         phase2:     Phase2(self[1], <<0,2>>);
-        phase3:     Phase3(self[1], <<0,3>>);
+        phase3:     skip; \* Phase3(self[1], <<0,3>>);
     }
     
     \* Acceptors:
@@ -248,56 +234,27 @@ Max(xs) == CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
                     } or {
                         Phase2Reply(self);
                     } or {
-                        Phase3Reply(self);
+                        skip; \* Phase3Reply(self);
                     } or {
                         skip; \* JoinBallot(self);
                     }
                 }
     }
-    
-    (*
-    \* The work flow of a leader:
-    process (leader \in (C \times Ballot)) {
-        leader:         either {
-                            when self[2] = 0;
-        b01:                Propose(self[1], 0);
-                            either {
-        b0fastD:                FastDecision(self[1], 0);
-                            } or {
-        b0phase2:               Phase2(self[1], 0);
-        b0slowD:                SlowDecision(self[1], 0);
-                            }
-                        } or {
-                            when self[2] > 0;
-        startBal:           StartBallot(self[1], self[2]);
-        recover:            Recover(self[1], self[2]);
-        decide:             if (<<self[1], self[2]>> \in phase1) {
-                                either {
-        bNfastD:                   FastDecision(self[1], self[2]);
-                                } or {
-        bNphase2:                  Phase2(self[1], self[2]);
-        bNslowD1:                  SlowDecision(self[1], self[2]);
-                                }
-                            } else {
-        bNslowD2:               SlowDecision(self[1], self[2]);
-                            }
-                        }
-    }
-    *)
-    
+ 
 }
 
 *)
 \* BEGIN TRANSLATION
-\* Label propose of process initLeader at line 147 col 9 changed to propose_
-\* Label acc of process acc at line 244 col 17 changed to acc_
+\* Label propose of process initLeader at line 162 col 9 changed to propose_
+\* Label acc of process acc at line 231 col 17 changed to acc_
 VARIABLES ballot, vote, joinBallot, propose, pc
 
 (* define statement *)
 TypeInvariant ==
     /\  \A p \in P, c \in C : ballot[p][c] \in Ballot
-    /\  \A p \in P, c \in C : \E D \in SUBSET Ballot : vote[p][c] \in [D -> SUBSET C]
+    /\  \A p \in P, c \in C : \E D \in SUBSET Ballot : vote[p][c] \in [D -> [strong : SUBSET C, weak : SUBSET C]]
     /\  joinBallot \subseteq (C \times Ballot)
+    /\  \E D \in SUBSET (C \times Ballot) : propose \in [D -> [strong : SUBSET C, weak : SUBSET C]]
 
 
 SeenAt(c, bal, p) == bal \in DOMAIN vote[p][c]
@@ -326,6 +283,12 @@ Inv3 == \A p \in P : \A c \in C :
     LET b == LastBal(c, Max(Ballot), p)
     IN  <<-1,-1>> \prec b => b \in DOMAIN vote[p][c]
 
+Inv2 == \A prop \in Image(propose) : prop.weak \cap prop.strong = {}
+
+PossibleFastDeps(c, b, q) ==
+    {ds \in SUBSET C : \E q2 \in FastQuorum :
+                    \A p \in q2 \cap q : vote[p][c][<<b,1>>].strong = ds}
+
 Cmd(leader) == leader[1]
 Bal(leader) == leader[2]
 
@@ -340,10 +303,10 @@ Phase2SeenCmds(p, c) == {c2 \in C : \E bal \in Phase2Bals :
 Decided(c, deps) ==
     \/  \E b \in Phase1Bals : \E q \in FastQuorum :
             \A p \in q : b \in DOMAIN vote[p][c] /\ vote[p][c][b] = deps
-    \/  \E b \in Phase2Bals  : \E q \in FastQuorum :
+    \/  \E b \in Phase2Bals  : \E q \in         Quorum :
             \A p \in q : b \in DOMAIN vote[p][c] /\ vote[p][c][b] = deps
-    \/  \E b \in Phase3Bals : \E q \in Quorum :
-            \A p \in q : b \in DOMAIN vote[p][c] /\ vote[p][c][b] = deps
+
+
 
 Decisions == {d \in C \times SUBSET C : Decided(d[1],d[2])}
 
@@ -353,17 +316,24 @@ Decisions == {d \in C \times SUBSET C : Decided(d[1],d[2])}
 
 
 
-GraphInvariant == \A c1, c2 \in C : \A deps1, deps2 \in SUBSET C :
+
+
+
+GraphInvariant == \A c1, c2 \in C : \A deps1, deps2 \in [strong : SUBSET C, weak : SUBSET C] :
     /\  Decided(c1, deps1)
     /\  Decided(c2, deps2)
     /\ c1 # c2
-    =>  \/  c2 \in deps1
-        \/  c1 \in deps2
+    /\ c2 \notin deps1.strong
+    /\ c1 \notin deps2.strong
+    => c2 \in deps1.weak \/ c1 \in deps2.weak
 
-Agreement == \A c \in C : \A deps1, deps2 \in SUBSET C :
+
+
+
+Agreement == \A c \in C : \A deps1, deps2 \in [strong : SUBSET C, weak : SUBSET C] :
     /\ Decided(c, deps1)
     /\ Decided(c, deps2)
-    => deps1 = deps2
+    => deps1.strong = deps2.strong
 
 
 vars == << ballot, vote, joinBallot, propose, pc >>
@@ -380,41 +350,31 @@ Init == (* Global variables *)
 
 propose_(self) == /\ pc[self] = "propose_"
                   /\ Assert((<<0,1>>)[2] = 1, 
-                            "Failure of assertion at line 147, column 9 of macro called at line 237, column 21.")
-                  /\ propose' = propose ++ <<<<(self[1]),(<<0,1>>)>>, {}>>
+                            "Failure of assertion at line 162, column 9 of macro called at line 224, column 21.")
+                  /\ propose' = propose ++ <<<<(self[1]),(<<0,1>>)>>, [strong |-> {}, weak |-> {}]>>
                   /\ pc' = [pc EXCEPT ![self] = "phase2"]
                   /\ UNCHANGED << ballot, vote, joinBallot >>
 
 phase2(self) == /\ pc[self] = "phase2"
                 /\ Assert((<<0,2>>)[2] = 2, 
-                          "Failure of assertion at line 162, column 9 of macro called at line 238, column 21.")
+                          "Failure of assertion at line 177, column 9 of macro called at line 225, column 21.")
                 /\ \E q \in Quorum:
                      /\ \A p \in q : (<<0,2>>) \preceq ballot[p][(self[1])]
-                     /\ IF \E ds \in SUBSET C : \E q2 \in FastQuorum :
-                                   \A p \in q2 \cap q : vote[p][(self[1])][<<(<<0,2>>)[1],1>>] = ds
-                           THEN /\ \E ds \in      {ds \in SUBSET C : \E q2 \in FastQuorum :
-                                             \A p \in q2 \cap q : vote[p][(self[1])][<<(<<0,2>>)[1],1>>] = ds}:
-                                     propose' = propose ++ <<<<(self[1]), (<<0,2>>)>>, ds>>
-                           ELSE /\ propose' =        propose ++ <<<<(self[1]), <<(<<0,2>>)[1],3>>>>,
-                                              UNION {vote[p][(self[1])][<<(<<0,2>>)[1],1>>] : p \in q}>>
+                     /\ LET depsUnion == UNION {vote[p][(self[1])][<<(<<0,2>>)[1],1>>].strong : p \in q} IN
+                          LET fastDeps == PossibleFastDeps((self[1]), (<<0,2>>)[1], q) IN
+                            /\ Assert(Cardinality(fastDeps) <= 1, 
+                                      "Failure of assertion at line 182, column 17 of macro called at line 225, column 21.")
+                            /\ IF fastDeps # {}
+                                  THEN /\ \E ds \in fastDeps:
+                                            propose' = propose ++ <<<<(self[1]), (<<0,2>>)>>, [strong |-> ds, weak |-> depsUnion \ ds]>>
+                                  ELSE /\ propose' = propose ++ <<<<(self[1]), <<(<<0,2>>)[1],2>>>>, [strong |-> depsUnion, weak |-> {}]>>
                 /\ pc' = [pc EXCEPT ![self] = "phase3"]
                 /\ UNCHANGED << ballot, vote, joinBallot >>
 
 phase3(self) == /\ pc[self] = "phase3"
-                /\ Assert((<<0,3>>)[2] = 3, 
-                          "Failure of assertion at line 191, column 9 of macro called at line 239, column 21.")
-                /\ <<(self[1]), (<<0,3>>)>> \notin DOMAIN propose
-                /\ \E q \in Quorum:
-                     /\ \A p \in q : (<<0,3>>) \preceq ballot[p][(self[1])]
-                     /\ IF \E ds \in SUBSET C : \E q2 \in FastQuorum :
-                                   \A p \in q2 \cap q : vote[p][(self[1])][<<(<<0,3>>)[1],2>>] = ds
-                           THEN /\ \E ds \in      {ds \in SUBSET C : \E q2 \in FastQuorum :
-                                             \A p \in q2 \cap q : vote[p][(self[1])][<<(<<0,3>>)[1],2>>] = ds}:
-                                     propose' = propose ++ <<<<(self[1]), (<<0,3>>)>>, ds>>
-                           ELSE /\ propose' =        propose ++ <<<<(self[1]), <<(<<0,3>>)[1],3>>>>,
-                                              UNION {vote[p][(self[1])][<<(<<0,3>>)[1],2>>] : p \in q}>>
+                /\ TRUE
                 /\ pc' = [pc EXCEPT ![self] = "Done"]
-                /\ UNCHANGED << ballot, vote, joinBallot >>
+                /\ UNCHANGED << ballot, vote, joinBallot, propose >>
 
 initLeader(self) == propose_(self) \/ phase2(self) \/ phase3(self)
 
@@ -423,22 +383,17 @@ acc_(self) == /\ pc[self] = "acc_"
                          \E bal \in Phase1Bals:
                            /\ <<c, bal>> \in DOMAIN propose /\ ballot[self][c] \preceq bal
                            /\ LastBal(c, bal, self) \prec bal
-                           /\ vote' = [vote EXCEPT ![self] = [@ EXCEPT ![c] = @ ++ <<bal, Phase1SeenCmds(self)>>]]
+                           /\ vote' = [vote EXCEPT ![self] = [@ EXCEPT ![c] = @ ++ <<bal, [strong |-> Phase1SeenCmds(self), weak |-> {}]>>]]
                            /\ ballot' = [ballot EXCEPT ![self] = [@ EXCEPT ![c] = <<bal[1], 2>>]]
                  \/ /\ \E c \in C:
                          \E bal \in Phase2Bals:
                            /\ <<c, bal>> \in DOMAIN propose /\ ballot[self][c] \preceq bal
                            /\ LastBal(c, bal, self) \prec bal
                            /\ vote' =     [vote EXCEPT ![self] = [@ EXCEPT ![c] =
-                                      @ ++ <<bal, propose[<<c, bal>>] \cup Phase2SeenCmds(self, c)>>]]
-                           /\ ballot' = [ballot EXCEPT ![self] = [@ EXCEPT ![c] = <<bal[1], 3>>]]
-                 \/ /\ \E c \in C:
-                         \E bal \in Phase3Bals:
-                           /\ <<c, bal>> \in DOMAIN propose /\ ballot[self][c] \preceq bal
-                           /\ LastBal(c, bal, self) \prec bal
-                           /\ vote' =     [vote EXCEPT ![self] = [@ EXCEPT ![c] =
                                       @ ++ <<bal, propose[<<c, bal>>]>>]]
-                           /\ ballot' = [ballot EXCEPT ![self] = [@ EXCEPT ![c] = <<bal[1], 3>>]]
+                           /\ ballot' = [ballot EXCEPT ![self] = [@ EXCEPT ![c] = <<bal[1], 2>>]]
+                 \/ /\ TRUE
+                    /\ UNCHANGED <<ballot, vote>>
                  \/ /\ TRUE
                     /\ UNCHANGED <<ballot, vote>>
               /\ pc' = [pc EXCEPT ![self] = "acc_"]
@@ -456,5 +411,5 @@ Spec == Init /\ [][Next]_vars
 
 =============================================================================
 \* Modification History
-\* Last modified Wed Apr 06 02:24:50 EDT 2016 by nano
+\* Last modified Wed Apr 06 10:27:02 EDT 2016 by nano
 \* Created Tue Apr 05 09:07:07 EDT 2016 by nano
