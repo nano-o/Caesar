@@ -181,7 +181,7 @@ Max(xs) == CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
             when LastBal(c, bal, p) \prec bal; \* p has not participated yet in this ballot. 
             vote := [vote EXCEPT ![p] = [@ EXCEPT ![c] = @ ++ <<bal, 
                 [strong |-> propose[<<c, bal>>].strong, 
-                 weak |-> Phase1SeenCmds(p)] \cup propose[<<c, bal>>].strong>>]];
+                 weak |-> Phase1SeenCmds(p) \cup propose[<<c, bal>>].strong]>> ]];
             \* A response to a phase1Bal means joining phase2:
             ballot := [ballot EXCEPT ![p] = [@ EXCEPT ![c] = <<bal[1], 2>>]];
         }
@@ -224,18 +224,23 @@ Max(xs) == CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
             with (mbal = MaxBal(c, bal, q)) {
                 if (mbal[2] = 1) { \* Only phase 1 was started.
                     with (  ps = {p \in q : mbal \in DOMAIN vote[p][c]};
-                            fastDeps = PossibleFastDeps(c, bal[1], q) ) {
+                            fastDeps = PossibleFastDeps(c, mbal[1], q) ) {
                         if (fastDeps # {}) { \* if c could have been decided fast:
-                            propose := propose ++ <<<<c,bal>>, [strong |-> fastDeps, weak |-> {}]>>;
+                            with ( ds \in fastDeps ) {
+                                propose := propose ++ <<<<c,bal>>, [strong |-> ds, weak |-> {}]>>;
+                            }
                         } else { \* no fast decision could have happened:
+                            \* when FALSE;
                             propose := propose ++ <<<<c,bal>>, [strong |-> {}, weak |-> {}]>>;
                         }
                     }
                 } else if (mbal[2] = 2) { \* phase 2 was started.
+                    \* when FALSE;
                     with (p \in {p \in P : LastBal(c, <<b-1,2>>, p) = mbal}) { \* <<b-2,2>> is the highest ballot strictly inferior to <<b,1>>.
                         propose := propose ++ <<<<c, <<b,2>>>>, vote[p][c][mbal]>>;
                     }
                 } else if (mbal[2] = -1) {
+                    \* when FALSE;
                     propose := propose ++ <<<<c,bal>>, [strong |-> {}, weak |-> {}]>>;
                 }
             }
@@ -278,22 +283,13 @@ Max(xs) == CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
                 }
     }
     
-    (***********************************************************************)
-    (* Model-checked exhaustively with 3 accs, 2 coms, 1 recovery (7       *)
-    (* minutes on laptop, 140k states, depth 26); with 1 acc, 3 coms, 1    *)
-    (* recovery each (6 minutes on laptop, diameter 28, 36k states); with  *)
-    (* 3 accs, 2 coms, 1 recovery each (44 mins on whitewhale, depth 33,   *)
-    (* 5.1M states).                                                       *)
-    (***********************************************************************)
-    
-    
 }
 
 *)
 \* BEGIN TRANSLATION
 \* Label propose of process initLeader at line 173 col 14 changed to propose_
 \* Label phase2 of process initLeader at line 191 col 14 changed to phase2_
-\* Label acc of process acc at line 270 col 17 changed to acc_
+\* Label acc of process acc at line 275 col 17 changed to acc_
 VARIABLES ballot, vote, joinBallot, propose, pc
 
 (* define statement *)
@@ -414,7 +410,7 @@ phase2_(self) == /\ pc[self] = "phase2_"
                              /\ LET depsUnion == UNION {vote[p][self][<<bal[1],1>>].weak : p \in q} IN
                                   LET fastDeps == PossibleFastDeps(self, bal[1], q) IN
                                     /\ Assert(Cardinality(fastDeps) <= 1, 
-                                              "Failure of assertion at line 197, column 21 of macro called at line 259, column 21.")
+                                              "Failure of assertion at line 197, column 21 of macro called at line 264, column 21.")
                                     /\ IF fastDeps # {}
                                           THEN /\ \E ds \in fastDeps:
                                                     propose' = propose ++ <<<<self, bal>>, [strong |-> ds, weak |-> depsUnion \ ds]>>
@@ -426,7 +422,7 @@ initLeader(self) == propose_(self) \/ phase2_(self)
 
 start(self) == /\ pc[self] = "start"
                /\ Assert((self[2]) > 0, 
-                         "Failure of assertion at line 246, column 9 of macro called at line 263, column 21.")
+                         "Failure of assertion at line 251, column 9 of macro called at line 268, column 21.")
                /\ joinBallot' = (joinBallot \cup {<<(self[1]),<<(self[2]),1>>>>})
                /\ pc' = [pc EXCEPT ![self] = "recover"]
                /\ UNCHANGED << ballot, vote, propose >>
@@ -438,9 +434,10 @@ recover(self) == /\ pc[self] = "recover"
                         /\ LET mbal == MaxBal((self[1]), bal, q) IN
                              IF mbal[2] = 1
                                 THEN /\ LET ps == {p \in q : mbal \in DOMAIN vote[p][(self[1])]} IN
-                                          LET fastDeps == PossibleFastDeps((self[1]), bal[1], q) IN
+                                          LET fastDeps == PossibleFastDeps((self[1]), mbal[1], q) IN
                                             IF fastDeps # {}
-                                               THEN /\ propose' = propose ++ <<<<(self[1]),bal>>, [strong |-> fastDeps, weak |-> {}]>>
+                                               THEN /\ \E ds \in fastDeps:
+                                                         propose' = propose ++ <<<<(self[1]),bal>>, [strong |-> ds, weak |-> {}]>>
                                                ELSE /\ propose' = propose ++ <<<<(self[1]),bal>>, [strong |-> {}, weak |-> {}]>>
                                 ELSE /\ IF mbal[2] = 2
                                            THEN /\ \E p \in {p \in P : LastBal((self[1]), <<(self[2])-1,2>>, p) = mbal}:
@@ -461,7 +458,7 @@ phase2(self) == /\ pc[self] = "phase2"
                             /\ LET depsUnion == UNION {vote[p][(self[1])][<<bal[1],1>>].weak : p \in q} IN
                                  LET fastDeps == PossibleFastDeps((self[1]), bal[1], q) IN
                                    /\ Assert(Cardinality(fastDeps) <= 1, 
-                                             "Failure of assertion at line 197, column 21 of macro called at line 265, column 21.")
+                                             "Failure of assertion at line 197, column 21 of macro called at line 270, column 21.")
                                    /\ IF fastDeps # {}
                                          THEN /\ \E ds \in fastDeps:
                                                    propose' = propose ++ <<<<(self[1]), bal>>, [strong |-> ds, weak |-> depsUnion \ ds]>>
@@ -478,7 +475,7 @@ acc_(self) == /\ pc[self] = "acc_"
                            /\ LastBal(c, bal, self) \prec bal
                            /\ vote' =     [vote EXCEPT ![self] = [@ EXCEPT ![c] = @ ++ <<bal,
                                       [strong |-> propose[<<c, bal>>].strong,
-                                       weak |-> Phase1SeenCmds(self)] \cup propose[<<c, bal>>].strong>>]]
+                                       weak |-> Phase1SeenCmds(self) \cup propose[<<c, bal>>].strong]>> ]]
                            /\ ballot' = [ballot EXCEPT ![self] = [@ EXCEPT ![c] = <<bal[1], 2>>]]
                  \/ /\ \E c \in C:
                          \E bal \in Phase2Bals:
@@ -509,5 +506,5 @@ Spec == Init /\ [][Next]_vars
 
 =============================================================================
 \* Modification History
-\* Last modified Wed Apr 06 12:57:16 EDT 2016 by nano
+\* Last modified Wed Apr 06 17:58:47 EDT 2016 by nano
 \* Created Tue Apr 05 09:07:07 EDT 2016 by nano
