@@ -281,7 +281,9 @@ Max(xs) == CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
     (***********************************************************************)
     (* Model-checked exhaustively with 3 accs, 2 coms, 1 recovery (7       *)
     (* minutes on laptop, 140k states, depth 26); with 1 acc, 3 coms, 1    *)
-    (* recovery each (6 minutes on laptop, diameter 28, 36k states).       *)
+    (* recovery each (6 minutes on laptop, diameter 28, 36k states); with  *)
+    (* 3 accs, 2 coms, 1 recovery each (44 mins on whitewhale, depth 33,   *)
+    (* 5.1M states).                                                       *)
     (***********************************************************************)
     
     
@@ -507,5 +509,5 @@ Spec == Init /\ [][Next]_vars
 
 =============================================================================
 \* Modification History
-\* Last modified Wed Apr 06 12:44:15 EDT 2016 by nano
+\* Last modified Wed Apr 06 12:57:16 EDT 2016 by nano
 \* Created Tue Apr 05 09:07:07 EDT 2016 by nano
