@@ -127,10 +127,12 @@ Max(xs) == CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
         (* Replication.                                                    *)
         (*******************************************************************)
                 
+        Deps == UNION {[strong : {strong}, weak : SUBSET (C \ strong)] : strong \in SUBSET C}
+        
         (*******************************************************************)
         (* Commands see each other                                         *)
         (*******************************************************************)
-        GraphInvariant == \A c1, c2 \in C : \A deps1, deps2 \in [strong : SUBSET C, weak : SUBSET C] :
+        GraphInvariant == \A c1, c2 \in C : \A deps1, deps2 \in Deps :
             /\  Decided(c1, deps1)
             /\  Decided(c2, deps2)
             /\ c1 # c2 
@@ -141,7 +143,7 @@ Max(xs) == CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
         (*******************************************************************)
         (* Two ballots agree on strong dependencies.                       *)
         (*******************************************************************)
-        Agreement == \A c \in C : \A deps1, deps2 \in [strong : SUBSET C, weak : SUBSET C] :
+        Agreement == \A c \in C : \A deps1, deps2 \in Deps :
             /\ Decided(c, deps1)
             /\ Decided(c, deps2) 
             => deps1.strong = deps2.strong
@@ -244,8 +246,8 @@ Max(xs) == CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
 
 *)
 \* BEGIN TRANSLATION
-\* Label propose of process initLeader at line 160 col 9 changed to propose_
-\* Label acc of process acc at line 227 col 17 changed to acc_
+\* Label propose of process initLeader at line 162 col 9 changed to propose_
+\* Label acc of process acc at line 229 col 17 changed to acc_
 VARIABLES ballot, vote, joinBallot, propose, pc
 
 (* define statement *)
@@ -313,10 +315,12 @@ Decisions == {d \in C \times [strong : SUBSET C, weak : SUBSET C] : Decided(d[1]
 
 
 
+Deps == UNION {[strong : {strong}, weak : SUBSET (C \ strong)] : strong \in SUBSET C}
 
 
 
-GraphInvariant == \A c1, c2 \in C : \A deps1, deps2 \in [strong : SUBSET C, weak : SUBSET C] :
+
+GraphInvariant == \A c1, c2 \in C : \A deps1, deps2 \in Deps :
     /\  Decided(c1, deps1)
     /\  Decided(c2, deps2)
     /\ c1 # c2
@@ -327,7 +331,7 @@ GraphInvariant == \A c1, c2 \in C : \A deps1, deps2 \in [strong : SUBSET C, weak
 
 
 
-Agreement == \A c \in C : \A deps1, deps2 \in [strong : SUBSET C, weak : SUBSET C] :
+Agreement == \A c \in C : \A deps1, deps2 \in Deps :
     /\ Decided(c, deps1)
     /\ Decided(c, deps2)
     => deps1.strong = deps2.strong
@@ -347,20 +351,20 @@ Init == (* Global variables *)
 
 propose_(self) == /\ pc[self] = "propose_"
                   /\ Assert((<<0,1>>)[2] = 1, 
-                            "Failure of assertion at line 160, column 9 of macro called at line 221, column 21.")
+                            "Failure of assertion at line 162, column 9 of macro called at line 223, column 21.")
                   /\ propose' = propose ++ <<<<(self[1]),(<<0,1>>)>>, [strong |-> {}, weak |-> {}]>>
                   /\ pc' = [pc EXCEPT ![self] = "phase2"]
                   /\ UNCHANGED << ballot, vote, joinBallot >>
 
 phase2(self) == /\ pc[self] = "phase2"
                 /\ Assert((<<0,2>>)[2] = 2, 
-                          "Failure of assertion at line 175, column 9 of macro called at line 222, column 21.")
+                          "Failure of assertion at line 177, column 9 of macro called at line 224, column 21.")
                 /\ \E q \in Quorum:
                      /\ \A p \in q : (<<0,2>>) \preceq ballot[p][(self[1])]
                      /\ LET depsUnion == UNION {vote[p][(self[1])][<<(<<0,2>>)[1],1>>].strong : p \in q} IN
                           LET fastDeps == PossibleFastDeps((self[1]), (<<0,2>>)[1], q) IN
                             /\ Assert(Cardinality(fastDeps) <= 1, 
-                                      "Failure of assertion at line 180, column 17 of macro called at line 222, column 21.")
+                                      "Failure of assertion at line 182, column 17 of macro called at line 224, column 21.")
                             /\ IF fastDeps # {}
                                   THEN /\ \E ds \in fastDeps:
                                             propose' = propose ++ <<<<(self[1]), (<<0,2>>)>>, [strong |-> ds, weak |-> depsUnion \ ds]>>
@@ -401,5 +405,5 @@ Spec == Init /\ [][Next]_vars
 
 =============================================================================
 \* Modification History
-\* Last modified Wed Apr 06 10:43:52 EDT 2016 by nano
+\* Last modified Wed Apr 06 10:46:19 EDT 2016 by nano
 \* Created Tue Apr 05 09:07:07 EDT 2016 by nano
