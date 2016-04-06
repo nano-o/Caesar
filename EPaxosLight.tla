@@ -109,7 +109,7 @@ Max(xs) == CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
         Decided(c, deps) ==
             \/  \E b \in Phase1Bals : \E q \in FastQuorum : 
                     \A p \in q : b \in DOMAIN vote[p][c] /\ vote[p][c][b] = deps
-            \/  \E b \in Phase2Bals  : \E q \in Quorum :
+            \/  \E b \in Phase2Bals  : \E q \in FastQuorum :
                     \A p \in q : b \in DOMAIN vote[p][c] /\ vote[p][c][b] = deps
             \/  \E b \in Phase3Bals : \E q \in Quorum :
                     \A p \in q : b \in DOMAIN vote[p][c] /\ vote[p][c][b] = deps
@@ -164,14 +164,14 @@ Max(xs) == CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
             when \A p \in q : bal \preceq ballot[p][c];
             \* if c could have been decided fast:
             if (\E ds \in SUBSET C : \E q2 \in FastQuorum :
-                        \A p \in q2 \cap q : vote[p][c][<<bal[1],bal[2]-1>>] = ds) {
+                        \A p \in q2 \cap q : vote[p][c][<<bal[1],1>>] = ds) {
                 with (ds \in {ds \in SUBSET C : \E q2 \in FastQuorum :
-                        \A p \in q2 \cap q : vote[p][c][<<bal[1],bal[2]-1>>] = ds}) {
+                        \A p \in q2 \cap q : vote[p][c][<<bal[1],1>>] = ds}) {
                     propose := propose ++ <<<<c, bal>>, ds>>; \* Propose in phase 2
                 }
             } else { \* propose in phase 3.
-                propose := propose ++ <<<<c, <<bal[1],bal[2]+1>>>>, 
-                    UNION {vote[p][c][<<bal[1],bal[2]-1>>] : p \in q}>>; 
+                propose := propose ++ <<<<c, <<bal[1],3>>>>, 
+                    UNION {vote[p][c][<<bal[1],1>>] : p \in q}>>; 
             };
         }
     }
@@ -181,7 +181,7 @@ Max(xs) == CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
             when <<c, bal>> \in DOMAIN propose /\ ballot[p][c] \preceq bal;
             when LastBal(c, bal, p) \prec bal; \* p has not participated yet in this ballot. 
             vote := [vote EXCEPT ![p] = [@ EXCEPT ![c] = 
-                @ ++ <<bal, propose[<<c, bal>>] \cup Phase2SeenCmds(p, c)>>]];
+                @ ++ <<bal, propose[<<c, bal>>] \cup Phase2SeenCmds(p, c)>>]]; \* union to guarantee that commands see each other.
             \* A response to a phase1Bal means joining phase 3:
             ballot := [ballot EXCEPT ![p] = [@ EXCEPT ![c] = <<bal[1], 3>>]];
         }
@@ -192,8 +192,17 @@ Max(xs) == CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
         when <<c, bal>> \notin DOMAIN propose;
         with (q \in Quorum) {
             when \A p \in q : bal \preceq ballot[p][c];
-            propose := propose ++ <<<<c, <<bal[1],3>>>>, 
-                UNION {vote[p][c][<<bal[1],2>>] : p \in q}>>;
+            \* if c could have been decided fast:
+            if (\E ds \in SUBSET C : \E q2 \in FastQuorum :
+                        \A p \in q2 \cap q : vote[p][c][<<bal[1],2>>] = ds) {
+                with (ds \in {ds \in SUBSET C : \E q2 \in FastQuorum :
+                        \A p \in q2 \cap q : vote[p][c][<<bal[1],2>>] = ds}) {
+                    propose := propose ++ <<<<c, bal>>, ds>>;
+                }
+            } else {
+                propose := propose ++ <<<<c, <<bal[1],3>>>>, 
+                    UNION {vote[p][c][<<bal[1],2>>] : p \in q}>>; \* union to guarantee that commands see each other.
+            };
         }
     }
     
@@ -212,9 +221,9 @@ Max(xs) == CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
             when \A p \in q : bal \preceq ballot[p][c];
             with (mbal = MaxBal(c, bal, q)) {
                 if (mbal[2] = 1) {
-                    skip;
+                    skip; 
                 } else if (mbal[2] = 2) {
-                    skip;
+                    skip; \* Here, how to guarantee that commands see each other? We may not have a full quorum...
                 } else if (mbal[2] = 3) {
                     with (p \in {p \in P : LastBal(c, <<b-1,3>>, p) = mbal}) {
                         propose := propose ++ <<<<c, <<b,3>>>>, vote[p][c][mbal]>>;
@@ -225,11 +234,9 @@ Max(xs) == CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
     }
     
     process (initLeader \in (C \times {0})) {
-        propose:    if (self[2] = 0) {
-                        Phase1(self[1], <<0,1>>);
-                    };
-        phase2:     Phase2(self[1], <<self[2],2>>);
-        phase3:     Phase3(self[1], <<self[2],3>>);
+        propose:    Phase1(self[1], <<0,1>>);
+        phase2:     Phase2(self[1], <<0,2>>);
+        phase3:     Phase3(self[1], <<0,3>>);
     }
     
     \* Acceptors:
@@ -281,8 +288,8 @@ Max(xs) == CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
 
 *)
 \* BEGIN TRANSLATION
-\* Label propose of process initLeader at line 228 col 21 changed to propose_
-\* Label acc of process acc at line 237 col 17 changed to acc_
+\* Label propose of process initLeader at line 147 col 9 changed to propose_
+\* Label acc of process acc at line 244 col 17 changed to acc_
 VARIABLES ballot, vote, joinBallot, propose, pc
 
 (* define statement *)
@@ -332,7 +339,7 @@ Phase2SeenCmds(p, c) == {c2 \in C : \E bal \in Phase2Bals :
 Decided(c, deps) ==
     \/  \E b \in Phase1Bals : \E q \in FastQuorum :
             \A p \in q : b \in DOMAIN vote[p][c] /\ vote[p][c][b] = deps
-    \/  \E b \in Phase2Bals  : \E q \in Quorum :
+    \/  \E b \in Phase2Bals  : \E q \in FastQuorum :
             \A p \in q : b \in DOMAIN vote[p][c] /\ vote[p][c][b] = deps
     \/  \E b \in Phase3Bals : \E q \in Quorum :
             \A p \in q : b \in DOMAIN vote[p][c] /\ vote[p][c][b] = deps
@@ -371,38 +378,40 @@ Init == (* Global variables *)
                                         [] self \in P -> "acc_"]
 
 propose_(self) == /\ pc[self] = "propose_"
-                  /\ IF self[2] = 0
-                        THEN /\ Assert((<<0,1>>)[2] = 1, 
-                                       "Failure of assertion at line 147, column 9 of macro called at line 229, column 25.")
-                             /\ propose' = propose ++ <<<<(self[1]),(<<0,1>>)>>, {}>>
-                        ELSE /\ TRUE
-                             /\ UNCHANGED propose
+                  /\ Assert((<<0,1>>)[2] = 1, 
+                            "Failure of assertion at line 147, column 9 of macro called at line 237, column 21.")
+                  /\ propose' = propose ++ <<<<(self[1]),(<<0,1>>)>>, {}>>
                   /\ pc' = [pc EXCEPT ![self] = "phase2"]
                   /\ UNCHANGED << ballot, vote, joinBallot >>
 
 phase2(self) == /\ pc[self] = "phase2"
-                /\ Assert((<<self[2],2>>)[2] = 2, 
-                          "Failure of assertion at line 162, column 9 of macro called at line 231, column 21.")
+                /\ Assert((<<0,2>>)[2] = 2, 
+                          "Failure of assertion at line 162, column 9 of macro called at line 238, column 21.")
                 /\ \E q \in Quorum:
-                     /\ \A p \in q : (<<self[2],2>>) \preceq ballot[p][(self[1])]
+                     /\ \A p \in q : (<<0,2>>) \preceq ballot[p][(self[1])]
                      /\ IF \E ds \in SUBSET C : \E q2 \in FastQuorum :
-                                   \A p \in q2 \cap q : vote[p][(self[1])][<<(<<self[2],2>>)[1],(<<self[2],2>>)[2]-1>>] = ds
+                                   \A p \in q2 \cap q : vote[p][(self[1])][<<(<<0,2>>)[1],1>>] = ds
                            THEN /\ \E ds \in      {ds \in SUBSET C : \E q2 \in FastQuorum :
-                                             \A p \in q2 \cap q : vote[p][(self[1])][<<(<<self[2],2>>)[1],(<<self[2],2>>)[2]-1>>] = ds}:
-                                     propose' = propose ++ <<<<(self[1]), (<<self[2],2>>)>>, ds>>
-                           ELSE /\ propose' =        propose ++ <<<<(self[1]), <<(<<self[2],2>>)[1],(<<self[2],2>>)[2]+1>>>>,
-                                              UNION {vote[p][(self[1])][<<(<<self[2],2>>)[1],(<<self[2],2>>)[2]-1>>] : p \in q}>>
+                                             \A p \in q2 \cap q : vote[p][(self[1])][<<(<<0,2>>)[1],1>>] = ds}:
+                                     propose' = propose ++ <<<<(self[1]), (<<0,2>>)>>, ds>>
+                           ELSE /\ propose' =        propose ++ <<<<(self[1]), <<(<<0,2>>)[1],3>>>>,
+                                              UNION {vote[p][(self[1])][<<(<<0,2>>)[1],1>>] : p \in q}>>
                 /\ pc' = [pc EXCEPT ![self] = "phase3"]
                 /\ UNCHANGED << ballot, vote, joinBallot >>
 
 phase3(self) == /\ pc[self] = "phase3"
-                /\ Assert((<<self[2],3>>)[2] = 3, 
-                          "Failure of assertion at line 191, column 9 of macro called at line 232, column 21.")
-                /\ <<(self[1]), (<<self[2],3>>)>> \notin DOMAIN propose
+                /\ Assert((<<0,3>>)[2] = 3, 
+                          "Failure of assertion at line 191, column 9 of macro called at line 239, column 21.")
+                /\ <<(self[1]), (<<0,3>>)>> \notin DOMAIN propose
                 /\ \E q \in Quorum:
-                     /\ \A p \in q : (<<self[2],3>>) \preceq ballot[p][(self[1])]
-                     /\ propose' =        propose ++ <<<<(self[1]), <<(<<self[2],3>>)[1],3>>>>,
-                                   UNION {vote[p][(self[1])][<<(<<self[2],3>>)[1],2>>] : p \in q}>>
+                     /\ \A p \in q : (<<0,3>>) \preceq ballot[p][(self[1])]
+                     /\ IF \E ds \in SUBSET C : \E q2 \in FastQuorum :
+                                   \A p \in q2 \cap q : vote[p][(self[1])][<<(<<0,3>>)[1],2>>] = ds
+                           THEN /\ \E ds \in      {ds \in SUBSET C : \E q2 \in FastQuorum :
+                                             \A p \in q2 \cap q : vote[p][(self[1])][<<(<<0,3>>)[1],2>>] = ds}:
+                                     propose' = propose ++ <<<<(self[1]), (<<0,3>>)>>, ds>>
+                           ELSE /\ propose' =        propose ++ <<<<(self[1]), <<(<<0,3>>)[1],3>>>>,
+                                              UNION {vote[p][(self[1])][<<(<<0,3>>)[1],2>>] : p \in q}>>
                 /\ pc' = [pc EXCEPT ![self] = "Done"]
                 /\ UNCHANGED << ballot, vote, joinBallot >>
 
@@ -446,5 +455,5 @@ Spec == Init /\ [][Next]_vars
 
 =============================================================================
 \* Modification History
-\* Last modified Wed Apr 06 01:53:48 EDT 2016 by nano
+\* Last modified Wed Apr 06 02:20:39 EDT 2016 by nano
 \* Created Tue Apr 05 09:07:07 EDT 2016 by nano
