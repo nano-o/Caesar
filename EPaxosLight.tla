@@ -13,19 +13,27 @@ f ++ kv == [x \in DOMAIN f \union {kv[1]} |-> IF x = kv[1] THEN kv[2] ELSE f[x]]
 Image(f) == {f[x] : x \in DOMAIN f}
 
 (***************************************************************************)
+(* Ballots are of the form <<b,i>>, where b is the main ballot number and  *)
+(* i the sub-ballot number.  Ballots can be compared:                      *)
+(***************************************************************************)
+bal1 \prec bal2 == 
+    IF bal1[1] = bal2[1]
+    THEN bal1[2] < bal2[2]
+    ELSE bal1[1] < bal2[1]
+
+bal1 \preceq bal2 ==
+    bal1 \prec bal2 \/ bal1 = bal2
+
+(***************************************************************************)
 (* P is the set of acceptors.  MaxTime bounds the timestamp that can be    *)
 (* assigned to proposals, but not to retries.  CmdId(c) must assign a      *)
 (* natural number to a command.  It is used to break time in timestamps.   *)
 (***************************************************************************)
-CONSTANTS P, Quorum, FastQuorum, NumBallots, C, CmdId(_)
-
-ASSUME \A c \in C : 
-    /\  CmdId(c) \in Nat 
-    /\  \A c2 \in C : c # c2 => CmdId(c) # CmdId(c2)
+CONSTANTS P, Quorum, FastQuorum, NumBallots, C
 
 ASSUME NumBallots \in Nat /\ NumBallots >= 1
 
-Ballot == 0..(NumBallots-1)
+Ballot == (0..(NumBallots-1)) \times {1,2,3}
 
 ASSUME \A Q \in Quorum : Q \subseteq P
 ASSUME \A Q1,Q2 \in Quorum : Q1 \cap Q2 # {}
@@ -39,53 +47,36 @@ ThreeFourthQuorums ==
     {Q \in SUBSET P : 4 * Cardinality(Q) > 3 * Cardinality(P)}
 
 (***************************************************************************)
-(* The maximum element in a set.                                           *)
+(* The maximum ballot in a set of ballots.                                 *)
 (***************************************************************************)
-Max(xs) == CHOOSE x \in xs : \A y \in xs : x >= y
+Max(xs) == CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
     
 (***********
 
 --algorithm EPaxosLight {
 
     variables
-        ballot = [p \in P |-> [c \in C |-> 0]],
+        ballot = [p \in P |-> [c \in C |-> <<0,1>>]],
         vote = [p \in P |-> [c \in C |-> <<>>]],
-        phase1 = {},
-        phase2 = <<>>,
-        committed = <<>>,
-        joinBallot = {}
+        joinBallot = {},
+        propose = <<>>,
 
     define {
         
-        Status == {"pending1", "accepted"}
-        CmdInfo == [status : Status, deps : SUBSET C]
-        
-        (*******************************************************************)
-        (* An invariant describing the type of the different variables.    *)
-        (* Note that we extensively use maps (also called functions) keyed *)
-        (* by pairs <c,b>, where c is a command and b a ballot, and where  *)
-        (* the set of keys of the map dynamically grows.  The set of keys  *)
-        (* of a map m is noted DOMAIN m.                                   *)
-        (*******************************************************************)
         TypeInvariant ==
             /\  \A p \in P, c \in C : ballot[p][c] \in Ballot
-            /\  \A p \in P, c \in C : \E D \in SUBSET Ballot : vote[p][c] \in [D -> CmdInfo]
-            /\  phase1 \in SUBSET (C \times Ballot)
-            /\  \E D \in SUBSET (C \times Ballot) : phase2 \in [D -> SUBSET C]
+            /\  \A p \in P, c \in C : \E D \in SUBSET Ballot : vote[p][c] \in [D -> SUBSET C]
             /\  joinBallot \subseteq (C \times Ballot)
-            /\  \E D \in SUBSET (C \times Ballot) : committed \in [D -> SUBSET C]
-    
-        \* All the commands ever seen by p in any ballot.
-        SeenCmds(p) == {c \in C : DOMAIN vote[p][c] # {}}
         
-        \* TRUE if c was seen in ballot b at p.
-        SeenAt(c, b, p) == b \in DOMAIN vote[p][c]
+        \* TRUE if c was seen in ballot B.
+        SeenAt(c, bal, p) == bal \in DOMAIN vote[p][c]
         
         \* The highest c-ballot in which p participated.
-        LastBal(c, max, p) == LET bals == {b \in DOMAIN vote[p][c] : b <= max} IN
-            IF bals # {}
-            THEN Max(bals)
-            ELSE -1
+        LastBal(c, max, p) == 
+            LET bals == {b \in DOMAIN vote[p][c] : b \preceq max} IN
+                IF bals # {}
+                THEN Max(bals)
+                ELSE <<-1,-1>>
         
         \* The estimate for c on p in the highest c-ballot in which p participated. 
         MaxVote(c, p) == vote[p][c][LastBal(c, Max(Ballot), p)]
@@ -94,19 +85,33 @@ Max(xs) == CHOOSE x \in xs : \A y \in xs : x >= y
         MaxBal(c, b, q) == 
             LET bals == {LastBal(c, b-1, p) : p \in q}
             IN Max(bals)
-        
-        ParticipatedIn(b, c, p) == b \in DOMAIN vote[p][c]
             
         (***************************************************************************)
         (* A few simple invariants.                                                *)
         (***************************************************************************)
-        Inv1 == \A p \in P : \A c \in C : ballot[p][c] >= LastBal(c, Max(Ballot), p)
+        Inv1 == \A p \in P : \A c \in C : LastBal(c, Max(Ballot), p) \preceq ballot[p][c]
         
-        Inv2 == \A c \in C, b \in Ballot \ {0} : <<c,b>> \in phase1 => <<c,b>> \in joinBallot
-        
-        Inv3 == \A p \in P : \A c \in C : 
+        Inv3 == \A p \in P : \A c \in C :
             LET b == LastBal(c, Max(Ballot), p)
-            IN  b >= 0 => b \in DOMAIN vote[p][c]
+            IN  <<-1,-1>> \prec b => b \in DOMAIN vote[p][c]
+            
+        Cmd(leader) == leader[1]
+        Bal(leader) == leader[2]
+        
+        Phase1Bals == (0..NumBallots) \times {1}
+        Phase2Bals == (0..NumBallots) \times {2}
+        Phase3Bals == (0..NumBallots) \times {3}
+        
+        Phase1SeenCmds(p) == {c \in C : \E bal \in Phase1Bals : bal \in DOMAIN vote[p][c]}
+        Phase2SeenCmds(p) == {c \in C : \E bal \in Phase2Bals : bal \in DOMAIN vote[p][c]}
+        
+        Decided(c, deps) ==
+            \/  \E b \in Phase1Bals : \E q \in FastQuorum : 
+                    \A p \in q : b \in DOMAIN vote[p][c] /\ vote[p][c][b] = deps
+            \/  \E b \in Phase2Bals  : \E q \in Quorum :
+                    \A p \in q : b \in DOMAIN vote[p][c] /\ vote[p][c][b] = deps
+                    
+        Decisions == {d \in C \times SUBSET C : Decided(d[1],d[2])}
         
         (*******************************************************************)
         (* The main correctness properties are GraphInvariant and          *)
@@ -114,20 +119,17 @@ Max(xs) == CHOOSE x \in xs : \A y \in xs : x >= y
         (* Replication.                                                    *)
         (*******************************************************************)
                 
-        GraphInvariant == \A c1, c2 \in C : \A b1, b2 \in Ballot :
-            /\ <<c1,b1>> \in DOMAIN committed 
-            /\ <<c2,b2>> \in DOMAIN committed
+        GraphInvariant == \A c1, c2 \in C : \A deps1, deps2 \in SUBSET C :
+            /\  Decided(c1, deps1)
+            /\  Decided(c2, deps2)
             /\ c1 # c2 
-            =>  \/  c2 \in committed[<<c1,b1>>]
-                \/  c1 \in committed[<<c2,b2>>]
+            =>  \/  c2 \in deps1
+                \/  c1 \in deps2
         
-        Agreement == \A c \in C : \A b1,b2 \in Ballot : 
-            /\ <<c,b1>> \in DOMAIN committed
-            /\ <<c,b2>> \in DOMAIN committed 
-            => committed[<<c,b1>>] = committed[<<c,b2>>]
-
-        Cmd(leader) == leader[1]
-        Bal(leader) == leader[2]
+        Agreement == \A c \in C : \A deps1, deps2 \in SUBSET C :
+            /\ Decided(c, deps1)
+            /\ Decided(c, deps2) 
+            => deps1 = deps2
         
     }
     
@@ -135,93 +137,78 @@ Max(xs) == CHOOSE x \in xs : \A y \in xs : x >= y
     (* Finally, the algorithm:                                             *)
     (***********************************************************************)
  
-    macro Phase1(c, b) {
-        when <<c,b>> \notin phase1;
-        phase1 := phase1 \cup {<<c,b>>}
+    (***********************************************************************)
+    (* Phase1 can only be triggered when all values are safe.              *)
+    (***********************************************************************)
+    macro Phase1(c, bal) {
+        assert bal[2] = 1;
+        propose := propose ++ <<<<c,bal>>, {}>>;
     }
     
     macro Phase1Reply(p) {
-        with (c \in C; b \in Ballot) { 
-            when <<c, b>> \in phase1;
-            when b >= ballot[p][c];
-            ballot := [ballot EXCEPT ![p] = [@ EXCEPT ![c] = b]]; \* Join the ballot if lagging.
-            when LastBal(c, b, p) < b; \* p has not participated yet in this ballot.
-            vote := [vote EXCEPT ![p] = [@ EXCEPT ![c] = @
-                ++ <<b, [status |-> "pending1", deps |-> SeenCmds(p)]>>]];
-            
-        }
-    }
-
-    macro FastDecision(c, b) {
-        with (q \in FastQuorum) {
-            when \A p \in q : b \in DOMAIN vote[p][c] /\ vote[p][c][b].status = "pending1";
-            with (ds \in {ds \in SUBSET C : \A p \in q : vote[p][c][b].deps = ds}) {
-                committed := committed ++ <<<<c,b>>, ds>>;
-            }
+        with (c \in C; bal \in Phase1Bals) {
+            when <<c, bal>> \in DOMAIN propose /\ ballot[p][c] \preceq bal;
+            when LastBal(c, bal, p) \prec bal; \* p has not participated yet in this ballot. 
+            vote := [vote EXCEPT ![p] = [@ EXCEPT ![c] = @ ++ <<bal, Phase1SeenCmds(p)>>]];
+            \* A response to a phase1Bal means joining phase2:
+            ballot := [ballot EXCEPT ![p] = [@ EXCEPT ![c] = <<bal[1], bal[2]+1>>]];
         }
     }
     
-    macro Phase2(c, b) {
+    macro Phase2(c, bal) {
+        assert bal[2] = 2;
         with (q \in Quorum) {
-            when \A p \in q : b \in DOMAIN vote[p][c] /\ vote[p][c][b].status = "pending1";
-            with (ds = UNION {vote[p][c][b].deps : p \in q}) {
-                phase2 := phase2 ++ <<<<c,b>>, ds>>;
-            }
-        }
-    }
-    
-    macro Phase2Reply(p) {
-        with (c \in C; b \in Ballot) { 
-            when <<c, b>> \in DOMAIN phase2;
-            when b >= ballot[p][c];
-            ballot := [ballot EXCEPT ![p] = [@ EXCEPT ![c] = b]]; \* Join the ballot if lagging.
-            when b \notin DOMAIN vote[p][c] \/ (b \in DOMAIN vote[p][c] /\ vote[p][c][b].status = "pending1"); 
-            vote := [vote EXCEPT ![p] = [@ EXCEPT ![c] = @
-                ++ <<b, [status |-> "accepted", deps |-> phase2[<<c,b>>] ]>>]];
-            
-        }
-    }
-    macro SlowDecision(c, b) {
-        with (q \in Quorum) {
-            when \A p \in q : b \in DOMAIN vote[p][c] /\ vote[p][c][b].status = "accepted";
-            with (ds \in {ds \in SUBSET C : \A p \in q : vote[p][c][b].deps = ds}) {
-                committed := committed ++ <<<<c,b>>, ds>>;
-            }
-        }
-    }
-        
-    macro StartBallot(c, b) {
-        assert b > 0; \* Only start ballots greater than 0; 0 is started by default.
-        joinBallot := joinBallot \cup {<<c,b>>};
-    }
-    
-    macro JoinBallot(p) { \* Note that every process is in the first ballot by default.
-        with (ball \in joinBallot; c = ball[1], b = ball[2]) {
-            when b > ballot[p][c];
-            ballot := [ballot EXCEPT ![p] = [@ EXCEPT ![c] = b]];
-        }
-    }
-    
-    macro Recover(com, bal) {
-        when <<com,bal>> \in joinBallot;
-        with (q \in Quorum) {
-            when \A p \in q : ballot[p][com] >= bal;
-            with (mb = MaxBal(com, bal, q); ps = {p \in q : mb \in DOMAIN vote[p][com]}) {
-                if (ps = {}) {
-                    phase1 := phase1 \cup {<<com,bal>>};
-                } else {
-                    when ps \in Quorum;
-                    phase2 := phase2 ++ <<<<com,bal>>, UNION {vote[p][com][mb].deps : p \in ps}>>;
+            when \A p \in q : ballot[p][c] = bal;
+            if (\E ds \in SUBSET C : \E q2 \in FastQuorum :
+                        \A p \in q2 \cap q : vote[p][c][<<bal[1],bal[2]-1>>] = ds) {
+                with (ds \in {ds \in SUBSET C : \E q2 \in FastQuorum :
+                        \A p \in q2 \cap q : vote[p][c][<<bal[1],bal[2]-1>>] = ds}) {
+                    propose := propose ++ <<<<c, bal>>, ds>>; \* Propose in phase 2
                 }
+            } else { \* propose in phase 3.
+                propose := propose ++ <<<<c, <<bal[1],bal[2]+1>>>>, 
+                    UNION {vote[p][c][<<bal[1],bal[2]-1>>] : p \in q}>>; 
             };
         }
     }
     
+    macro Phase2Reply(p) {
+        with (c \in C; bal \in Phase2Bals) {
+            when <<c, bal>> \in DOMAIN propose /\ ballot[p][c] \preceq bal;
+            when LastBal(c, bal, p) \prec bal; \* p has not participated yet in this ballot. 
+            vote := [vote EXCEPT ![p] = [@ EXCEPT ![c] = 
+                @ ++ <<bal, propose[<<c, bal>>](* \cup Phase2SeenCmds(p)*)>>]];
+            \* A response to a phase1Bal means joining phase 3:
+            ballot := [ballot EXCEPT ![p] = [@ EXCEPT ![c] = <<bal[1], bal[2]+1>>]];
+        }
+    }
+    
+    process (leader \in (C \times (0..NumBallots))) {
+        propose:    if (self[2] = 0) {
+                        Phase1(self[1], <<0,1>>);
+                    };
+        phase2:     Phase2(self[1], <<self[2],2>>);
+    }
+    
+    \* Acceptors:
+    process (acc \in P) {
+        acc:    while (TRUE) {
+                    either {
+                        Phase1Reply(self);
+                    } or {
+                        Phase2Reply(self);
+                    } or {
+                        skip; \* JoinBallot(self);
+                    }
+                }
+    }
+    
+    (*
     \* The work flow of a leader:
     process (leader \in (C \times Ballot)) {
         leader:         either {
                             when self[2] = 0;
-        b01:                Phase1(self[1], 0);
+        b01:                Propose(self[1], 0);
                             either {
         b0fastD:                FastDecision(self[1], 0);
                             } or {
@@ -244,58 +231,31 @@ Max(xs) == CHOOSE x \in xs : \A y \in xs : x >= y
                             }
                         }
     }
-    
-    \* Acceptors:
-    process (acc \in P) {
-        acc:    while (TRUE) {
-                    either {
-                        Phase1Reply(self);
-                    } or {
-                        Phase2Reply(self);
-                    } or {
-                        JoinBallot(self);
-                    }
-                }
-    }
+    *)
     
 }
 
 *)
 \* BEGIN TRANSLATION
-\* Label leader of process leader at line 222 col 25 changed to leader_
-\* Label acc of process acc at line 250 col 17 changed to acc_
-VARIABLES ballot, vote, phase1, phase2, committed, joinBallot, pc
+\* Label propose of process leader at line 187 col 21 changed to propose_
+\* Label acc of process acc at line 195 col 17 changed to acc_
+VARIABLES ballot, vote, joinBallot, propose, pc
 
 (* define statement *)
-Status == {"pending1", "accepted"}
-CmdInfo == [status : Status, deps : SUBSET C]
-
-
-
-
-
-
-
-
 TypeInvariant ==
     /\  \A p \in P, c \in C : ballot[p][c] \in Ballot
-    /\  \A p \in P, c \in C : \E D \in SUBSET Ballot : vote[p][c] \in [D -> CmdInfo]
-    /\  phase1 \in SUBSET (C \times Ballot)
-    /\  \E D \in SUBSET (C \times Ballot) : phase2 \in [D -> SUBSET C]
+    /\  \A p \in P, c \in C : \E D \in SUBSET Ballot : vote[p][c] \in [D -> SUBSET C]
     /\  joinBallot \subseteq (C \times Ballot)
-    /\  \E D \in SUBSET (C \times Ballot) : committed \in [D -> SUBSET C]
 
 
-SeenCmds(p) == {c \in C : DOMAIN vote[p][c] # {}}
+SeenAt(c, bal, p) == bal \in DOMAIN vote[p][c]
 
 
-SeenAt(c, b, p) == b \in DOMAIN vote[p][c]
-
-
-LastBal(c, max, p) == LET bals == {b \in DOMAIN vote[p][c] : b <= max} IN
-    IF bals # {}
-    THEN Max(bals)
-    ELSE -1
+LastBal(c, max, p) ==
+    LET bals == {b \in DOMAIN vote[p][c] : b \preceq max} IN
+        IF bals # {}
+        THEN Max(bals)
+        ELSE <<-1,-1>>
 
 
 MaxVote(c, p) == vote[p][c][LastBal(c, Max(Ballot), p)]
@@ -305,190 +265,113 @@ MaxBal(c, b, q) ==
     LET bals == {LastBal(c, b-1, p) : p \in q}
     IN Max(bals)
 
-ParticipatedIn(b, c, p) == b \in DOMAIN vote[p][c]
 
 
 
-
-Inv1 == \A p \in P : \A c \in C : ballot[p][c] >= LastBal(c, Max(Ballot), p)
-
-Inv2 == \A c \in C, b \in Ballot \ {0} : <<c,b>> \in phase1 => <<c,b>> \in joinBallot
+Inv1 == \A p \in P : \A c \in C : LastBal(c, Max(Ballot), p) \preceq ballot[p][c]
 
 Inv3 == \A p \in P : \A c \in C :
     LET b == LastBal(c, Max(Ballot), p)
-    IN  b >= 0 => b \in DOMAIN vote[p][c]
-
-
-
-
-
-
-
-GraphInvariant == \A c1, c2 \in C : \A b1, b2 \in Ballot :
-    /\ <<c1,b1>> \in DOMAIN committed
-    /\ <<c2,b2>> \in DOMAIN committed
-    /\ c1 # c2
-    =>  \/  c2 \in committed[<<c1,b1>>]
-        \/  c1 \in committed[<<c2,b2>>]
-
-Agreement == \A c \in C : \A b1,b2 \in Ballot :
-    /\ <<c,b1>> \in DOMAIN committed
-    /\ <<c,b2>> \in DOMAIN committed
-    => committed[<<c,b1>>] = committed[<<c,b2>>]
+    IN  <<-1,-1>> \prec b => b \in DOMAIN vote[p][c]
 
 Cmd(leader) == leader[1]
 Bal(leader) == leader[2]
 
+Phase1Bals == (0..NumBallots) \times {1}
+Phase2Bals == (0..NumBallots) \times {2}
+Phase3Bals == (0..NumBallots) \times {3}
 
-vars == << ballot, vote, phase1, phase2, committed, joinBallot, pc >>
+Phase1SeenCmds(p) == {c \in C : \E bal \in Phase1Bals : bal \in DOMAIN vote[p][c]}
+Phase2SeenCmds(p) == {c \in C : \E bal \in Phase2Bals : bal \in DOMAIN vote[p][c]}
 
-ProcSet == ((C \times Ballot)) \cup (P)
+Decided(c, deps) ==
+    \/  \E b \in Phase1Bals : \E q \in FastQuorum :
+            \A p \in q : b \in DOMAIN vote[p][c] /\ vote[p][c][b] = deps
+    \/  \E b \in Phase2Bals  : \E q \in Quorum :
+            \A p \in q : b \in DOMAIN vote[p][c] /\ vote[p][c][b] = deps
+
+Decisions == {d \in C \times SUBSET C : Decided(d[1],d[2])}
+
+
+
+
+
+
+
+GraphInvariant == \A c1, c2 \in C : \A deps1, deps2 \in SUBSET C :
+    /\  Decided(c1, deps1)
+    /\  Decided(c2, deps2)
+    /\ c1 # c2
+    =>  \/  c2 \in deps1
+        \/  c1 \in deps2
+
+Agreement == \A c \in C : \A deps1, deps2 \in SUBSET C :
+    /\ Decided(c, deps1)
+    /\ Decided(c, deps2)
+    => deps1 = deps2
+
+
+vars == << ballot, vote, joinBallot, propose, pc >>
+
+ProcSet == ((C \times (0..NumBallots))) \cup (P)
 
 Init == (* Global variables *)
-        /\ ballot = [p \in P |-> [c \in C |-> 0]]
+        /\ ballot = [p \in P |-> [c \in C |-> <<0,1>>]]
         /\ vote = [p \in P |-> [c \in C |-> <<>>]]
-        /\ phase1 = {}
-        /\ phase2 = <<>>
-        /\ committed = <<>>
         /\ joinBallot = {}
-        /\ pc = [self \in ProcSet |-> CASE self \in (C \times Ballot) -> "leader_"
+        /\ propose = <<>>
+        /\ pc = [self \in ProcSet |-> CASE self \in (C \times (0..NumBallots)) -> "propose_"
                                         [] self \in P -> "acc_"]
 
-leader_(self) == /\ pc[self] = "leader_"
-                 /\ \/ /\ self[2] = 0
-                       /\ pc' = [pc EXCEPT ![self] = "b01"]
-                    \/ /\ self[2] > 0
-                       /\ pc' = [pc EXCEPT ![self] = "startBal"]
-                 /\ UNCHANGED << ballot, vote, phase1, phase2, committed, 
-                                 joinBallot >>
+propose_(self) == /\ pc[self] = "propose_"
+                  /\ IF self[2] = 0
+                        THEN /\ Assert((<<0,1>>)[2] = 1, 
+                                       "Failure of assertion at line 144, column 9 of macro called at line 188, column 25.")
+                             /\ propose' = propose ++ <<<<(self[1]),(<<0,1>>)>>, {}>>
+                        ELSE /\ TRUE
+                             /\ UNCHANGED propose
+                  /\ pc' = [pc EXCEPT ![self] = "phase2"]
+                  /\ UNCHANGED << ballot, vote, joinBallot >>
 
-b01(self) == /\ pc[self] = "b01"
-             /\ <<(self[1]),0>> \notin phase1
-             /\ phase1' = (phase1 \cup {<<(self[1]),0>>})
-             /\ \/ /\ pc' = [pc EXCEPT ![self] = "b0fastD"]
-                \/ /\ pc' = [pc EXCEPT ![self] = "b0phase2"]
-             /\ UNCHANGED << ballot, vote, phase2, committed, joinBallot >>
+phase2(self) == /\ pc[self] = "phase2"
+                /\ Assert((<<self[2],2>>)[2] = 2, 
+                          "Failure of assertion at line 159, column 9 of macro called at line 190, column 21.")
+                /\ \E q \in Quorum:
+                     /\ \A p \in q : ballot[p][(self[1])] = (<<self[2],2>>)
+                     /\ IF \E ds \in SUBSET C : \E q2 \in FastQuorum :
+                                   \A p \in q2 \cap q : vote[p][(self[1])][<<(<<self[2],2>>)[1],(<<self[2],2>>)[2]-1>>] = ds
+                           THEN /\ \E ds \in      {ds \in SUBSET C : \E q2 \in FastQuorum :
+                                             \A p \in q2 \cap q : vote[p][(self[1])][<<(<<self[2],2>>)[1],(<<self[2],2>>)[2]-1>>] = ds}:
+                                     propose' = propose ++ <<<<(self[1]), (<<self[2],2>>)>>, ds>>
+                           ELSE /\ propose' =        propose ++ <<<<(self[1]), <<(<<self[2],2>>)[1],(<<self[2],2>>)[2]+1>>>>,
+                                              UNION {vote[p][(self[1])][<<(<<self[2],2>>)[1],(<<self[2],2>>)[2]-1>>] : p \in q}>>
+                /\ pc' = [pc EXCEPT ![self] = "Done"]
+                /\ UNCHANGED << ballot, vote, joinBallot >>
 
-b0fastD(self) == /\ pc[self] = "b0fastD"
-                 /\ \E q \in FastQuorum:
-                      /\ \A p \in q : 0 \in DOMAIN vote[p][(self[1])] /\ vote[p][(self[1])][0].status = "pending1"
-                      /\ \E ds \in {ds \in SUBSET C : \A p \in q : vote[p][(self[1])][0].deps = ds}:
-                           committed' = committed ++ <<<<(self[1]),0>>, ds>>
-                 /\ pc' = [pc EXCEPT ![self] = "Done"]
-                 /\ UNCHANGED << ballot, vote, phase1, phase2, joinBallot >>
-
-b0phase2(self) == /\ pc[self] = "b0phase2"
-                  /\ \E q \in Quorum:
-                       /\ \A p \in q : 0 \in DOMAIN vote[p][(self[1])] /\ vote[p][(self[1])][0].status = "pending1"
-                       /\ LET ds == UNION {vote[p][(self[1])][0].deps : p \in q} IN
-                            phase2' = phase2 ++ <<<<(self[1]),0>>, ds>>
-                  /\ pc' = [pc EXCEPT ![self] = "b0slowD"]
-                  /\ UNCHANGED << ballot, vote, phase1, committed, joinBallot >>
-
-b0slowD(self) == /\ pc[self] = "b0slowD"
-                 /\ \E q \in Quorum:
-                      /\ \A p \in q : 0 \in DOMAIN vote[p][(self[1])] /\ vote[p][(self[1])][0].status = "accepted"
-                      /\ \E ds \in {ds \in SUBSET C : \A p \in q : vote[p][(self[1])][0].deps = ds}:
-                           committed' = committed ++ <<<<(self[1]),0>>, ds>>
-                 /\ pc' = [pc EXCEPT ![self] = "Done"]
-                 /\ UNCHANGED << ballot, vote, phase1, phase2, joinBallot >>
-
-startBal(self) == /\ pc[self] = "startBal"
-                  /\ Assert((self[2]) > 0, 
-                            "Failure of assertion at line 194, column 9 of macro called at line 233, column 29.")
-                  /\ joinBallot' = (joinBallot \cup {<<(self[1]),(self[2])>>})
-                  /\ pc' = [pc EXCEPT ![self] = "recover"]
-                  /\ UNCHANGED << ballot, vote, phase1, phase2, committed >>
-
-recover(self) == /\ pc[self] = "recover"
-                 /\ <<(self[1]),(self[2])>> \in joinBallot
-                 /\ \E q \in Quorum:
-                      /\ \A p \in q : ballot[p][(self[1])] >= (self[2])
-                      /\ LET mb == MaxBal((self[1]), (self[2]), q) IN
-                           LET ps == {p \in q : mb \in DOMAIN vote[p][(self[1])]} IN
-                             IF ps = {}
-                                THEN /\ phase1' = (phase1 \cup {<<(self[1]),(self[2])>>})
-                                     /\ UNCHANGED phase2
-                                ELSE /\ ps \in Quorum
-                                     /\ phase2' = phase2 ++ <<<<(self[1]),(self[2])>>, UNION {vote[p][(self[1])][mb].deps : p \in ps}>>
-                                     /\ UNCHANGED phase1
-                 /\ pc' = [pc EXCEPT ![self] = "decide"]
-                 /\ UNCHANGED << ballot, vote, committed, joinBallot >>
-
-decide(self) == /\ pc[self] = "decide"
-                /\ IF <<self[1], self[2]>> \in phase1
-                      THEN /\ \/ /\ pc' = [pc EXCEPT ![self] = "bNfastD"]
-                              \/ /\ pc' = [pc EXCEPT ![self] = "bNphase2"]
-                      ELSE /\ pc' = [pc EXCEPT ![self] = "bNslowD2"]
-                /\ UNCHANGED << ballot, vote, phase1, phase2, committed, 
-                                joinBallot >>
-
-bNslowD2(self) == /\ pc[self] = "bNslowD2"
-                  /\ \E q \in Quorum:
-                       /\ \A p \in q : (self[2]) \in DOMAIN vote[p][(self[1])] /\ vote[p][(self[1])][(self[2])].status = "accepted"
-                       /\ \E ds \in {ds \in SUBSET C : \A p \in q : vote[p][(self[1])][(self[2])].deps = ds}:
-                            committed' = committed ++ <<<<(self[1]),(self[2])>>, ds>>
-                  /\ pc' = [pc EXCEPT ![self] = "Done"]
-                  /\ UNCHANGED << ballot, vote, phase1, phase2, joinBallot >>
-
-bNfastD(self) == /\ pc[self] = "bNfastD"
-                 /\ \E q \in FastQuorum:
-                      /\ \A p \in q : (self[2]) \in DOMAIN vote[p][(self[1])] /\ vote[p][(self[1])][(self[2])].status = "pending1"
-                      /\ \E ds \in {ds \in SUBSET C : \A p \in q : vote[p][(self[1])][(self[2])].deps = ds}:
-                           committed' = committed ++ <<<<(self[1]),(self[2])>>, ds>>
-                 /\ pc' = [pc EXCEPT ![self] = "Done"]
-                 /\ UNCHANGED << ballot, vote, phase1, phase2, joinBallot >>
-
-bNphase2(self) == /\ pc[self] = "bNphase2"
-                  /\ \E q \in Quorum:
-                       /\ \A p \in q : (self[2]) \in DOMAIN vote[p][(self[1])] /\ vote[p][(self[1])][(self[2])].status = "pending1"
-                       /\ LET ds == UNION {vote[p][(self[1])][(self[2])].deps : p \in q} IN
-                            phase2' = phase2 ++ <<<<(self[1]),(self[2])>>, ds>>
-                  /\ pc' = [pc EXCEPT ![self] = "bNslowD1"]
-                  /\ UNCHANGED << ballot, vote, phase1, committed, joinBallot >>
-
-bNslowD1(self) == /\ pc[self] = "bNslowD1"
-                  /\ \E q \in Quorum:
-                       /\ \A p \in q : (self[2]) \in DOMAIN vote[p][(self[1])] /\ vote[p][(self[1])][(self[2])].status = "accepted"
-                       /\ \E ds \in {ds \in SUBSET C : \A p \in q : vote[p][(self[1])][(self[2])].deps = ds}:
-                            committed' = committed ++ <<<<(self[1]),(self[2])>>, ds>>
-                  /\ pc' = [pc EXCEPT ![self] = "Done"]
-                  /\ UNCHANGED << ballot, vote, phase1, phase2, joinBallot >>
-
-leader(self) == leader_(self) \/ b01(self) \/ b0fastD(self)
-                   \/ b0phase2(self) \/ b0slowD(self) \/ startBal(self)
-                   \/ recover(self) \/ decide(self) \/ bNslowD2(self)
-                   \/ bNfastD(self) \/ bNphase2(self) \/ bNslowD1(self)
+leader(self) == propose_(self) \/ phase2(self)
 
 acc_(self) == /\ pc[self] = "acc_"
               /\ \/ /\ \E c \in C:
-                         \E b \in Ballot:
-                           /\ <<c, b>> \in phase1
-                           /\ b >= ballot[self][c]
-                           /\ ballot' = [ballot EXCEPT ![self] = [@ EXCEPT ![c] = b]]
-                           /\ LastBal(c, b, self) < b
-                           /\ vote' =     [vote EXCEPT ![self] = [@ EXCEPT ![c] = @
-                                      ++ <<b, [status |-> "pending1", deps |-> SeenCmds(self)]>>]]
+                         \E bal \in Phase1Bals:
+                           /\ <<c, bal>> \in DOMAIN propose /\ ballot[self][c] \preceq bal
+                           /\ LastBal(c, bal, self) \prec bal
+                           /\ vote' = [vote EXCEPT ![self] = [@ EXCEPT ![c] = @ ++ <<bal, Phase1SeenCmds(self)>>]]
+                           /\ ballot' = [ballot EXCEPT ![self] = [@ EXCEPT ![c] = <<bal[1], bal[2]+1>>]]
                  \/ /\ \E c \in C:
-                         \E b \in Ballot:
-                           /\ <<c, b>> \in DOMAIN phase2
-                           /\ b >= ballot[self][c]
-                           /\ ballot' = [ballot EXCEPT ![self] = [@ EXCEPT ![c] = b]]
-                           /\ b \notin DOMAIN vote[self][c] \/ (b \in DOMAIN vote[self][c] /\ vote[self][c][b].status = "pending1")
-                           /\ vote' =     [vote EXCEPT ![self] = [@ EXCEPT ![c] = @
-                                      ++ <<b, [status |-> "accepted", deps |-> phase2[<<c,b>>] ]>>]]
-                 \/ /\ \E ball \in joinBallot:
-                         LET c == ball[1] IN
-                           LET b == ball[2] IN
-                             /\ b > ballot[self][c]
-                             /\ ballot' = [ballot EXCEPT ![self] = [@ EXCEPT ![c] = b]]
-                    /\ vote' = vote
+                         \E bal \in Phase2Bals:
+                           /\ <<c, bal>> \in DOMAIN propose /\ ballot[self][c] \preceq bal
+                           /\ LastBal(c, bal, self) \prec bal
+                           /\ vote' =     [vote EXCEPT ![self] = [@ EXCEPT ![c] =
+                                      @ ++ <<bal, propose[<<c, bal>>]                           >>]]
+                           /\ ballot' = [ballot EXCEPT ![self] = [@ EXCEPT ![c] = <<bal[1], bal[2]+1>>]]
+                 \/ /\ TRUE
+                    /\ UNCHANGED <<ballot, vote>>
               /\ pc' = [pc EXCEPT ![self] = "acc_"]
-              /\ UNCHANGED << phase1, phase2, committed, joinBallot >>
+              /\ UNCHANGED << joinBallot, propose >>
 
 acc(self) == acc_(self)
 
-Next == (\E self \in (C \times Ballot): leader(self))
+Next == (\E self \in (C \times (0..NumBallots)): leader(self))
            \/ (\E self \in P: acc(self))
 
 Spec == Init /\ [][Next]_vars
@@ -498,5 +381,5 @@ Spec == Init /\ [][Next]_vars
 
 =============================================================================
 \* Modification History
-\* Last modified Tue Apr 05 15:29:36 EDT 2016 by nano
+\* Last modified Wed Apr 06 00:41:44 EDT 2016 by nano
 \* Created Tue Apr 05 09:07:07 EDT 2016 by nano
