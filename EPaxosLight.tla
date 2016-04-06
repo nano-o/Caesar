@@ -119,7 +119,7 @@ Max(xs) == CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
             \/  \E b \in Phase2Bals  : \E q \in Quorum :
                     \A p \in q : b \in DOMAIN vote[p][c] /\ vote[p][c][b] = deps
                     
-        Decisions == {d \in C \times SUBSET C : Decided(d[1],d[2])}
+        Decisions == {d \in C \times [strong : SUBSET C, weak : SUBSET C] : Decided(d[1],d[2])}
         
         (*******************************************************************)
         (* The main correctness properties are GraphInvariant and          *)
@@ -207,12 +207,11 @@ Max(xs) == CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
                 if (mbal[2] = 1) {
                     skip; 
                 } else if (mbal[2] = 2) {
-                    skip; \* Here, how to guarantee that commands see each other? We may not have a full quorum...
-                    \* Same approach as in starting phase3 above should work.
-                } else if (mbal[2] = 3) {
                     with (p \in {p \in P : LastBal(c, <<b-1,3>>, p) = mbal}) {
                         propose := propose ++ <<<<c, <<b,3>>>>, vote[p][c][mbal]>>;
                     }
+                } else if (mbal[2] = -1) {
+                    skip;
                 }
             }
         }
@@ -231,8 +230,6 @@ Max(xs) == CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
                     } or {
                         Phase2Reply(self);
                     } or {
-                        skip; \* Phase3Reply(self);
-                    } or {
                         skip; \* JoinBallot(self);
                     }
                 }
@@ -248,7 +245,7 @@ Max(xs) == CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
 *)
 \* BEGIN TRANSLATION
 \* Label propose of process initLeader at line 160 col 9 changed to propose_
-\* Label acc of process acc at line 228 col 17 changed to acc_
+\* Label acc of process acc at line 227 col 17 changed to acc_
 VARIABLES ballot, vote, joinBallot, propose, pc
 
 (* define statement *)
@@ -308,7 +305,7 @@ Decided(c, deps) ==
     \/  \E b \in Phase2Bals  : \E q \in Quorum :
             \A p \in q : b \in DOMAIN vote[p][c] /\ vote[p][c][b] = deps
 
-Decisions == {d \in C \times SUBSET C : Decided(d[1],d[2])}
+Decisions == {d \in C \times [strong : SUBSET C, weak : SUBSET C] : Decided(d[1],d[2])}
 
 
 
@@ -350,20 +347,20 @@ Init == (* Global variables *)
 
 propose_(self) == /\ pc[self] = "propose_"
                   /\ Assert((<<0,1>>)[2] = 1, 
-                            "Failure of assertion at line 160, column 9 of macro called at line 222, column 21.")
+                            "Failure of assertion at line 160, column 9 of macro called at line 221, column 21.")
                   /\ propose' = propose ++ <<<<(self[1]),(<<0,1>>)>>, [strong |-> {}, weak |-> {}]>>
                   /\ pc' = [pc EXCEPT ![self] = "phase2"]
                   /\ UNCHANGED << ballot, vote, joinBallot >>
 
 phase2(self) == /\ pc[self] = "phase2"
                 /\ Assert((<<0,2>>)[2] = 2, 
-                          "Failure of assertion at line 175, column 9 of macro called at line 223, column 21.")
+                          "Failure of assertion at line 175, column 9 of macro called at line 222, column 21.")
                 /\ \E q \in Quorum:
                      /\ \A p \in q : (<<0,2>>) \preceq ballot[p][(self[1])]
                      /\ LET depsUnion == UNION {vote[p][(self[1])][<<(<<0,2>>)[1],1>>].strong : p \in q} IN
                           LET fastDeps == PossibleFastDeps((self[1]), (<<0,2>>)[1], q) IN
                             /\ Assert(Cardinality(fastDeps) <= 1, 
-                                      "Failure of assertion at line 180, column 17 of macro called at line 223, column 21.")
+                                      "Failure of assertion at line 180, column 17 of macro called at line 222, column 21.")
                             /\ IF fastDeps # {}
                                   THEN /\ \E ds \in fastDeps:
                                             propose' = propose ++ <<<<(self[1]), (<<0,2>>)>>, [strong |-> ds, weak |-> depsUnion \ ds]>>
@@ -389,8 +386,6 @@ acc_(self) == /\ pc[self] = "acc_"
                            /\ ballot' = [ballot EXCEPT ![self] = [@ EXCEPT ![c] = <<bal[1], 2>>]]
                  \/ /\ TRUE
                     /\ UNCHANGED <<ballot, vote>>
-                 \/ /\ TRUE
-                    /\ UNCHANGED <<ballot, vote>>
               /\ pc' = [pc EXCEPT ![self] = "acc_"]
               /\ UNCHANGED << joinBallot, propose >>
 
@@ -406,5 +401,5 @@ Spec == Init /\ [][Next]_vars
 
 =============================================================================
 \* Modification History
-\* Last modified Wed Apr 06 10:38:16 EDT 2016 by nano
+\* Last modified Wed Apr 06 10:43:52 EDT 2016 by nano
 \* Created Tue Apr 05 09:07:07 EDT 2016 by nano
