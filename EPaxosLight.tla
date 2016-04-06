@@ -33,7 +33,7 @@ CONSTANTS P, Quorum, FastQuorum, NumBallots, C
 
 ASSUME NumBallots \in Nat /\ NumBallots >= 1
 
-Ballot == (0..(NumBallots-1)) \times {1,2,3}
+Ballot == (0..(NumBallots-1)) \times {1,2}
 
 ASSUME \A Q \in Quorum : Q \subseteq P
 ASSUME \A Q1,Q2 \in Quorum : Q1 \cap Q2 # {}
@@ -116,10 +116,8 @@ Max(xs) == CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
         Decided(c, deps) ==
             \/  \E b \in Phase1Bals : \E q \in FastQuorum :
                     \A p \in q : b \in DOMAIN vote[p][c] /\ vote[p][c][b] = deps
-            \/  \E b \in Phase2Bals  : \E q \in (*Fast*)Quorum :
+            \/  \E b \in Phase2Bals  : \E q \in Quorum :
                     \A p \in q : b \in DOMAIN vote[p][c] /\ vote[p][c][b] = deps
-            (*\/  \E b \in Phase3Bals : \E q \in Quorum :
-                    \A p \in q : b \in DOMAIN vote[p][c] /\ vote[p][c][b] = deps *)
                     
         Decisions == {d \in C \times SUBSET C : Decided(d[1],d[2])}
         
@@ -184,8 +182,8 @@ Max(xs) == CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
                     with (ds \in fastDeps) {
                         propose := propose ++ <<<<c, bal>>, [strong |-> ds, weak |-> depsUnion \ ds]>>;
                     }
-                } else {
-                    propose := propose ++ <<<<c, <<bal[1],2>>>>, [strong |-> depsUnion, weak |-> {}]>>;
+                } else { \* no fast decision could have happened:
+                    propose := propose ++ <<<<c, bal>>, [strong |-> depsUnion, weak |-> {}]>>;
                 }
             }
         }
@@ -223,7 +221,6 @@ Max(xs) == CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
     process (initLeader \in (C \times {0})) {
         propose:    Phase1(self[1], <<0,1>>);
         phase2:     Phase2(self[1], <<0,2>>);
-        phase3:     skip; \* Phase3(self[1], <<0,3>>);
     }
     
     \* Acceptors:
@@ -240,13 +237,18 @@ Max(xs) == CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
                     }
                 }
     }
+    
+    (***********************************************************************)
+    (* Model-checked exhaustively with 5 acceptors and 2 commands (90k     *)
+    (* states, depth 27).                                                  *)
+    (***********************************************************************)
  
 }
 
 *)
 \* BEGIN TRANSLATION
-\* Label propose of process initLeader at line 162 col 9 changed to propose_
-\* Label acc of process acc at line 231 col 17 changed to acc_
+\* Label propose of process initLeader at line 160 col 9 changed to propose_
+\* Label acc of process acc at line 228 col 17 changed to acc_
 VARIABLES ballot, vote, joinBallot, propose, pc
 
 (* define statement *)
@@ -303,10 +305,8 @@ Phase2SeenCmds(p, c) == {c2 \in C : \E bal \in Phase2Bals :
 Decided(c, deps) ==
     \/  \E b \in Phase1Bals : \E q \in FastQuorum :
             \A p \in q : b \in DOMAIN vote[p][c] /\ vote[p][c][b] = deps
-    \/  \E b \in Phase2Bals  : \E q \in         Quorum :
+    \/  \E b \in Phase2Bals  : \E q \in Quorum :
             \A p \in q : b \in DOMAIN vote[p][c] /\ vote[p][c][b] = deps
-
-
 
 Decisions == {d \in C \times SUBSET C : Decided(d[1],d[2])}
 
@@ -350,33 +350,28 @@ Init == (* Global variables *)
 
 propose_(self) == /\ pc[self] = "propose_"
                   /\ Assert((<<0,1>>)[2] = 1, 
-                            "Failure of assertion at line 162, column 9 of macro called at line 224, column 21.")
+                            "Failure of assertion at line 160, column 9 of macro called at line 222, column 21.")
                   /\ propose' = propose ++ <<<<(self[1]),(<<0,1>>)>>, [strong |-> {}, weak |-> {}]>>
                   /\ pc' = [pc EXCEPT ![self] = "phase2"]
                   /\ UNCHANGED << ballot, vote, joinBallot >>
 
 phase2(self) == /\ pc[self] = "phase2"
                 /\ Assert((<<0,2>>)[2] = 2, 
-                          "Failure of assertion at line 177, column 9 of macro called at line 225, column 21.")
+                          "Failure of assertion at line 175, column 9 of macro called at line 223, column 21.")
                 /\ \E q \in Quorum:
                      /\ \A p \in q : (<<0,2>>) \preceq ballot[p][(self[1])]
                      /\ LET depsUnion == UNION {vote[p][(self[1])][<<(<<0,2>>)[1],1>>].strong : p \in q} IN
                           LET fastDeps == PossibleFastDeps((self[1]), (<<0,2>>)[1], q) IN
                             /\ Assert(Cardinality(fastDeps) <= 1, 
-                                      "Failure of assertion at line 182, column 17 of macro called at line 225, column 21.")
+                                      "Failure of assertion at line 180, column 17 of macro called at line 223, column 21.")
                             /\ IF fastDeps # {}
                                   THEN /\ \E ds \in fastDeps:
                                             propose' = propose ++ <<<<(self[1]), (<<0,2>>)>>, [strong |-> ds, weak |-> depsUnion \ ds]>>
-                                  ELSE /\ propose' = propose ++ <<<<(self[1]), <<(<<0,2>>)[1],2>>>>, [strong |-> depsUnion, weak |-> {}]>>
-                /\ pc' = [pc EXCEPT ![self] = "phase3"]
+                                  ELSE /\ propose' = propose ++ <<<<(self[1]), (<<0,2>>)>>, [strong |-> depsUnion, weak |-> {}]>>
+                /\ pc' = [pc EXCEPT ![self] = "Done"]
                 /\ UNCHANGED << ballot, vote, joinBallot >>
 
-phase3(self) == /\ pc[self] = "phase3"
-                /\ TRUE
-                /\ pc' = [pc EXCEPT ![self] = "Done"]
-                /\ UNCHANGED << ballot, vote, joinBallot, propose >>
-
-initLeader(self) == propose_(self) \/ phase2(self) \/ phase3(self)
+initLeader(self) == propose_(self) \/ phase2(self)
 
 acc_(self) == /\ pc[self] = "acc_"
               /\ \/ /\ \E c \in C:
@@ -411,5 +406,5 @@ Spec == Init /\ [][Next]_vars
 
 =============================================================================
 \* Modification History
-\* Last modified Wed Apr 06 10:27:02 EDT 2016 by nano
+\* Last modified Wed Apr 06 10:38:16 EDT 2016 by nano
 \* Created Tue Apr 05 09:07:07 EDT 2016 by nano
