@@ -103,7 +103,8 @@ Max(xs) == CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
         Phase3Bals == (0..NumBallots) \times {3}
         
         Phase1SeenCmds(p) == {c \in C : \E bal \in Phase1Bals : bal \in DOMAIN vote[p][c]}
-        Phase2SeenCmds(p) == {c \in C : \E bal \in Phase2Bals : bal \in DOMAIN vote[p][c]}
+        Phase2SeenCmds(p, c) == {c2 \in C : \E bal \in Phase2Bals : 
+            bal \in DOMAIN vote[p][c2] /\ c \notin vote[p][c2][bal]}
         
         Decided(c, deps) ==
             \/  \E b \in Phase1Bals : \E q \in FastQuorum : 
@@ -159,6 +160,7 @@ Max(xs) == CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
         assert bal[2] = 2;
         with (q \in Quorum) {
             when \A p \in q : ballot[p][c] = bal;
+            \* if c could have been decided fast:
             if (\E ds \in SUBSET C : \E q2 \in FastQuorum :
                         \A p \in q2 \cap q : vote[p][c][<<bal[1],bal[2]-1>>] = ds) {
                 with (ds \in {ds \in SUBSET C : \E q2 \in FastQuorum :
@@ -177,7 +179,7 @@ Max(xs) == CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
             when <<c, bal>> \in DOMAIN propose /\ ballot[p][c] \preceq bal;
             when LastBal(c, bal, p) \prec bal; \* p has not participated yet in this ballot. 
             vote := [vote EXCEPT ![p] = [@ EXCEPT ![c] = 
-                @ ++ <<bal, propose[<<c, bal>>](* \cup Phase2SeenCmds(p)*)>>]];
+                @ ++ <<bal, propose[<<c, bal>>] \cup Phase2SeenCmds(p, c)>>]];
             \* A response to a phase1Bal means joining phase 3:
             ballot := [ballot EXCEPT ![p] = [@ EXCEPT ![c] = <<bal[1], bal[2]+1>>]];
         }
@@ -237,8 +239,8 @@ Max(xs) == CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
 
 *)
 \* BEGIN TRANSLATION
-\* Label propose of process leader at line 187 col 21 changed to propose_
-\* Label acc of process acc at line 195 col 17 changed to acc_
+\* Label propose of process leader at line 189 col 21 changed to propose_
+\* Label acc of process acc at line 197 col 17 changed to acc_
 VARIABLES ballot, vote, joinBallot, propose, pc
 
 (* define statement *)
@@ -282,7 +284,8 @@ Phase2Bals == (0..NumBallots) \times {2}
 Phase3Bals == (0..NumBallots) \times {3}
 
 Phase1SeenCmds(p) == {c \in C : \E bal \in Phase1Bals : bal \in DOMAIN vote[p][c]}
-Phase2SeenCmds(p) == {c \in C : \E bal \in Phase2Bals : bal \in DOMAIN vote[p][c]}
+Phase2SeenCmds(p, c) == {c2 \in C : \E bal \in Phase2Bals :
+    bal \in DOMAIN vote[p][c2] /\ c \notin vote[p][c2][bal]}
 
 Decided(c, deps) ==
     \/  \E b \in Phase1Bals : \E q \in FastQuorum :
@@ -326,7 +329,7 @@ Init == (* Global variables *)
 propose_(self) == /\ pc[self] = "propose_"
                   /\ IF self[2] = 0
                         THEN /\ Assert((<<0,1>>)[2] = 1, 
-                                       "Failure of assertion at line 144, column 9 of macro called at line 188, column 25.")
+                                       "Failure of assertion at line 145, column 9 of macro called at line 190, column 25.")
                              /\ propose' = propose ++ <<<<(self[1]),(<<0,1>>)>>, {}>>
                         ELSE /\ TRUE
                              /\ UNCHANGED propose
@@ -335,7 +338,7 @@ propose_(self) == /\ pc[self] = "propose_"
 
 phase2(self) == /\ pc[self] = "phase2"
                 /\ Assert((<<self[2],2>>)[2] = 2, 
-                          "Failure of assertion at line 159, column 9 of macro called at line 190, column 21.")
+                          "Failure of assertion at line 160, column 9 of macro called at line 192, column 21.")
                 /\ \E q \in Quorum:
                      /\ \A p \in q : ballot[p][(self[1])] = (<<self[2],2>>)
                      /\ IF \E ds \in SUBSET C : \E q2 \in FastQuorum :
@@ -362,7 +365,7 @@ acc_(self) == /\ pc[self] = "acc_"
                            /\ <<c, bal>> \in DOMAIN propose /\ ballot[self][c] \preceq bal
                            /\ LastBal(c, bal, self) \prec bal
                            /\ vote' =     [vote EXCEPT ![self] = [@ EXCEPT ![c] =
-                                      @ ++ <<bal, propose[<<c, bal>>]                           >>]]
+                                      @ ++ <<bal, propose[<<c, bal>>] \cup Phase2SeenCmds(self, c)>>]]
                            /\ ballot' = [ballot EXCEPT ![self] = [@ EXCEPT ![c] = <<bal[1], bal[2]+1>>]]
                  \/ /\ TRUE
                     /\ UNCHANGED <<ballot, vote>>
@@ -381,5 +384,5 @@ Spec == Init /\ [][Next]_vars
 
 =============================================================================
 \* Modification History
-\* Last modified Wed Apr 06 00:41:44 EDT 2016 by nano
+\* Last modified Wed Apr 06 01:10:52 EDT 2016 by nano
 \* Created Tue Apr 05 09:07:07 EDT 2016 by nano
