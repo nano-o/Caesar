@@ -240,7 +240,6 @@ Max(xs) == CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
                         propose := propose ++ <<<<c, <<b,2>>>>, vote[p][c][mbal]>>;
                     }
                 } else if (mbal[2] = -1) {
-                    \* when FALSE;
                     propose := propose ++ <<<<c,bal>>, [strong |-> {}, weak |-> {}]>>;
                 }
             }
@@ -282,14 +281,18 @@ Max(xs) == CHOOSE x \in xs : \A y \in xs : x # y => y \prec x
                     }
                 }
     }
-    
+    (***********************************************************************)
+    (* Model-cheked with 5 accs, 2 commands, 1 recovery, 2 fast quorums, 3 *)
+    (* classic quorums, and symmetry sets (43M states, depth 39, 11 hours  *)
+    (* on whitewhale).                                                     *)
+    (***********************************************************************)
 }
 
 *)
 \* BEGIN TRANSLATION
 \* Label propose of process initLeader at line 173 col 14 changed to propose_
 \* Label phase2 of process initLeader at line 191 col 14 changed to phase2_
-\* Label acc of process acc at line 275 col 17 changed to acc_
+\* Label acc of process acc at line 274 col 17 changed to acc_
 VARIABLES ballot, vote, joinBallot, propose, pc
 
 (* define statement *)
@@ -410,7 +413,7 @@ phase2_(self) == /\ pc[self] = "phase2_"
                              /\ LET depsUnion == UNION {vote[p][self][<<bal[1],1>>].weak : p \in q} IN
                                   LET fastDeps == PossibleFastDeps(self, bal[1], q) IN
                                     /\ Assert(Cardinality(fastDeps) <= 1, 
-                                              "Failure of assertion at line 197, column 21 of macro called at line 264, column 21.")
+                                              "Failure of assertion at line 197, column 21 of macro called at line 263, column 21.")
                                     /\ IF fastDeps # {}
                                           THEN /\ \E ds \in fastDeps:
                                                     propose' = propose ++ <<<<self, bal>>, [strong |-> ds, weak |-> depsUnion \ ds]>>
@@ -422,7 +425,7 @@ initLeader(self) == propose_(self) \/ phase2_(self)
 
 start(self) == /\ pc[self] = "start"
                /\ Assert((self[2]) > 0, 
-                         "Failure of assertion at line 251, column 9 of macro called at line 268, column 21.")
+                         "Failure of assertion at line 250, column 9 of macro called at line 267, column 21.")
                /\ joinBallot' = (joinBallot \cup {<<(self[1]),<<(self[2]),1>>>>})
                /\ pc' = [pc EXCEPT ![self] = "recover"]
                /\ UNCHANGED << ballot, vote, propose >>
@@ -458,7 +461,7 @@ phase2(self) == /\ pc[self] = "phase2"
                             /\ LET depsUnion == UNION {vote[p][(self[1])][<<bal[1],1>>].weak : p \in q} IN
                                  LET fastDeps == PossibleFastDeps((self[1]), bal[1], q) IN
                                    /\ Assert(Cardinality(fastDeps) <= 1, 
-                                             "Failure of assertion at line 197, column 21 of macro called at line 270, column 21.")
+                                             "Failure of assertion at line 197, column 21 of macro called at line 269, column 21.")
                                    /\ IF fastDeps # {}
                                          THEN /\ \E ds \in fastDeps:
                                                    propose' = propose ++ <<<<(self[1]), bal>>, [strong |-> ds, weak |-> depsUnion \ ds]>>
@@ -506,5 +509,5 @@ Spec == Init /\ [][Next]_vars
 
 =============================================================================
 \* Modification History
-\* Last modified Wed Apr 06 17:58:47 EDT 2016 by nano
+\* Last modified Thu Apr 07 07:45:49 EDT 2016 by nano
 \* Created Tue Apr 05 09:07:07 EDT 2016 by nano
