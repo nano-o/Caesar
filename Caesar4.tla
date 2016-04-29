@@ -217,7 +217,7 @@ GTE(c, xs) ==
                         when \forall c2 \in SeenCmds(p) : \neg Conflicts(p, c, t, c2); \* There is no conflict.
                         with (seen = phase2[<<c,b>>].deps) {
                             estimate := [estimate EXCEPT ![p] = [@ EXCEPT ![c] = @ ++ 
-                                <<b, [ts |-> t, status |-> "pending-slow", seen |-> seen, leaderDeps |-> {}]>>]];
+                                <<b, [ts |-> t, status |-> "pending-slow", seen |-> {}, leaderDeps |-> seen]>>]];
                         }
                     } or {
                         when \exists c2 \in SeenCmds(p) : Conflicts(p, c, t, c2); \* There is a conflict.
@@ -270,7 +270,8 @@ GTE(c, xs) ==
             ballot := [ballot EXCEPT ![p] = [@ EXCEPT ![c] = b]];
         }
     } 
-    
+     
+    (*
     macro EndPhase3(c, b) {
         with (q \in Quorum) {
             when \A p \in q : b \in DOMAIN estimate[p][c]
@@ -281,8 +282,7 @@ GTE(c, xs) ==
             }
         }
     }
-        
-    (*  
+         
 
     macro EndPhase1(c, b) {
         with (q \in Quorum) {
@@ -511,8 +511,9 @@ GTE(c, xs) ==
                         with (q \in Quorum, c = self[1], b = self[2]) {
                             when \A p2 \in q : SeenAt(c, b, p2);
                             when \A p2 \in q : estimate[p2][c][b].status = "pending-slow";
-                            with (  ds = UNION {estimate[p2][c][b].seen : p2 \in q},
+                            with (  (* ds = UNION {estimate[p2][c][b].seen : p2 \in q}, *)
                                     p2 = CHOOSE p2 \in q : TRUE,
+                                    ds = estimate[p2][c][b].leaderDeps,
                                     t = estimate[p2][c][b].ts) {
                                 stable := stable ++ <<<<c,b>>, [ts |-> t, deps |-> ds]>>;
                                 goto d; (* GOTO end *)
@@ -591,7 +592,7 @@ GTE(c, xs) ==
 *)
 \* BEGIN TRANSLATION
 \* Label phase1 of process initialLeader at line 398 col 26 changed to phase1_
-\* Label acc of process acc at line 574 col 17 changed to acc_
+\* Label acc of process acc at line 575 col 17 changed to acc_
 VARIABLES ballot, estimate, phase1, phase2, stable, phase3, join, phase1_deps, 
           pc
 
@@ -817,8 +818,8 @@ slowD(self) == /\ pc[self] = "slowD"
                       LET b == self[2] IN
                         /\ \A p2 \in q : SeenAt(c, b, p2)
                         /\ \A p2 \in q : estimate[p2][c][b].status = "pending-slow"
-                        /\ LET ds == UNION {estimate[p2][c][b].seen : p2 \in q} IN
-                             LET p2 == CHOOSE p2 \in q : TRUE IN
+                        /\ LET p2 == CHOOSE p2 \in q : TRUE IN
+                             LET ds == estimate[p2][c][b].leaderDeps IN
                                LET t == estimate[p2][c][b].ts IN
                                  /\ stable' = stable ++ <<<<c,b>>, [ts |-> t, deps |-> ds]>>
                                  /\ pc' = [pc EXCEPT ![self] = "d"]
@@ -836,7 +837,7 @@ rejectIn2(self) == /\ pc[self] = "rejectIn2"
                                    LET t == GTE(c, {<<c, estimate[p2][c][b].ts>> : p2 \in ps}) IN
                                      /\ phase3' = phase3 ++ <<<<c,b>>, [ts |-> t[2], deps |-> ds]>>
                                      /\ Assert(FALSE, 
-                                               "Failure of assertion at line 532, column 33.")
+                                               "Failure of assertion at line 533, column 33.")
                    /\ pc' = [pc EXCEPT ![self] = "end3"]
                    /\ UNCHANGED << ballot, estimate, phase1, phase2, stable, 
                                    join, phase1_deps >>
@@ -910,7 +911,7 @@ acc_(self) == /\ pc[self] = "acc_"
                                 /\ \/ /\ \forall c2 \in SeenCmds(self) : \neg Conflicts(self, c, t, c2)
                                       /\ LET seen == phase2[<<c,b>>].deps IN
                                            estimate' =         [estimate EXCEPT ![self] = [@ EXCEPT ![c] = @ ++
-                                                       <<b, [ts |-> t, status |-> "pending-slow", seen |-> seen, leaderDeps |-> {}]>>]]
+                                                       <<b, [ts |-> t, status |-> "pending-slow", seen |-> {}, leaderDeps |-> seen]>>]]
                                    \/ /\ \exists c2 \in SeenCmds(self) : Conflicts(self, c, t, c2)
                                       /\ LET t2 == GT(c, TimeStamps(self)) IN
                                            LET seen == CmdsWithLowerT(self, c, t2[2]) IN
@@ -949,5 +950,5 @@ Spec == Init /\ [][Next]_vars
 
 =============================================================================
 \* Modification History
-\* Last modified Fri Apr 29 13:35:13 EDT 2016 by nano
+\* Last modified Fri Apr 29 14:18:01 EDT 2016 by nano
 \* Created Tue Apr 05 09:07:07 EDT 2016 by nano
