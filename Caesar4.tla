@@ -90,7 +90,7 @@ GTE(c, xs) ==
     
 (***********
 
---algorithm Caesar {
+--algorithm Caesar { \* TODO: issue with timestamps: use <<c,t>> everywhere?
 
     variables
         \* maps an acceptor p and a command c to a ballot b, indicating that the acceptor p is in ballot b for command c:
@@ -164,7 +164,7 @@ GTE(c, xs) ==
         Blocked(p, c, t) == \exists c2 \in SeenCmds(p) : Blocks(p, c, t, c2)
                 
         GraphInvariant == \A c1, c2 \in C : \A b1, b2 \in Ballot :
-            /\ <<c1,b1>> \in DOMAIN stable 
+            /\ <<c1,b1>> \in DOMAIN stable
             /\ <<c2,b2>> \in DOMAIN stable
             /\ c1 # c2 
             /\ <<c1, stable[<<c1,b1>>].ts>> \sqsubset <<c2, stable[<<c2,b2>>].ts>> 
@@ -192,11 +192,11 @@ GTE(c, xs) ==
             with (t = propose[<<c, b>>].ts) {
                 when LastBal(c, b, p) \prec b; \* p has not participated yet in this ballot.
                 when \neg Blocked(self, c, t); \* No higher-timestamped command is blocking c.
-                with (flag = IF <<c,b>> \in DOMAIN phase1Deps THEN TRUE ELSE FALSE) {                
+                with (flag = IF <<c,b[1]>> \in DOMAIN phase1Deps THEN TRUE ELSE FALSE) {                
                     either {
                         when \forall c2 \in SeenCmds(p) : \neg Conflicts(p, c, t, c2); \* There is no conflict. 
-                        with (seen = IF <<c,b>> \in DOMAIN phase1Deps
-                                THEN phase1Deps[<<c,b>>] \cup LowerCmds(p, c, t, {"accepted", "stable", "pending"}) \* TODO
+                        with (seen = IF <<c,b[1]>> \in DOMAIN phase1Deps
+                                THEN phase1Deps[<<c,b[1]>>] \cup LowerCmds(p, c, t, {"accepted", "stable", "pending"}) \* TODO
                                 ELSE CmdsWithLowerT(p, c, t)) {
                             vote := [vote EXCEPT ![p] = [@ EXCEPT ![c] = @ ++ 
                                 <<b, [ts |-> t, status |-> "pending", seen |-> seen, leaderDeps |-> {}, flag |-> flag]>>]];
@@ -205,8 +205,8 @@ GTE(c, xs) ==
                         when \exists c2 \in SeenCmds(p) : Conflicts(p, c, t, c2); \* There is a conflict.
                         \* Collect all commands received so far; compute a strict upper bound on their timestamp:
                         with (  t2 = GT(c, TimeStamps(p));
-                                seen = IF <<c,b>> \in DOMAIN phase1Deps
-                                    THEN phase1Deps[<<c,b>>] \cup LowerCmds(p, c, t2[2], {"accepted", "stable", "pending"}) \* TODO
+                                seen = IF <<c,b[1]>> \in DOMAIN phase1Deps
+                                    THEN phase1Deps[<<c,b[1]>>] \cup LowerCmds(p, c, t2[2], {"accepted", "stable", "pending"}) \* TODO
                                     ELSE CmdsWithLowerT(p, c, t2[2]) ) {
                             \* Record the fact that the command was rejected with t2:
                             vote := [vote EXCEPT ![p] = [@ EXCEPT ![c] = @
@@ -733,17 +733,17 @@ acc_(self) == /\ pc[self] = "acc_"
                              /\ LET t == propose[<<c, b>>].ts IN
                                   /\ LastBal(c, b, self) \prec b
                                   /\ \neg Blocked(self, c, t)
-                                  /\ LET flag == IF <<c,b>> \in DOMAIN phase1Deps THEN TRUE ELSE FALSE IN
+                                  /\ LET flag == IF <<c,b[1]>> \in DOMAIN phase1Deps THEN TRUE ELSE FALSE IN
                                        \/ /\ \forall c2 \in SeenCmds(self) : \neg Conflicts(self, c, t, c2)
-                                          /\ LET seen ==      IF <<c,b>> \in DOMAIN phase1Deps
-                                                         THEN phase1Deps[<<c,b>>] \cup LowerCmds(self, c, t, {"accepted", "stable", "pending"})
+                                          /\ LET seen ==      IF <<c,b[1]>> \in DOMAIN phase1Deps
+                                                         THEN phase1Deps[<<c,b[1]>>] \cup LowerCmds(self, c, t, {"accepted", "stable", "pending"})
                                                          ELSE CmdsWithLowerT(self, c, t) IN
                                                vote' =     [vote EXCEPT ![self] = [@ EXCEPT ![c] = @ ++
                                                        <<b, [ts |-> t, status |-> "pending", seen |-> seen, leaderDeps |-> {}, flag |-> flag]>>]]
                                        \/ /\ \exists c2 \in SeenCmds(self) : Conflicts(self, c, t, c2)
                                           /\ LET t2 == GT(c, TimeStamps(self)) IN
-                                               LET seen ==    IF <<c,b>> \in DOMAIN phase1Deps
-                                                           THEN phase1Deps[<<c,b>>] \cup LowerCmds(self, c, t2[2], {"accepted", "stable", "pending"})
+                                               LET seen ==    IF <<c,b[1]>> \in DOMAIN phase1Deps
+                                                           THEN phase1Deps[<<c,b[1]>>] \cup LowerCmds(self, c, t2[2], {"accepted", "stable", "pending"})
                                                            ELSE CmdsWithLowerT(self, c, t2[2]) IN
                                                  vote' =     [vote EXCEPT ![self] = [@ EXCEPT ![c] = @
                                                          ++ <<b, [ts |-> t2[2], status |-> "rejected", seen |-> seen, leaderDeps |-> {}, flag |-> flag]>>]]
@@ -804,5 +804,5 @@ Spec == Init /\ [][Next]_vars
 
 =============================================================================
 \* Modification History
-\* Last modified Fri Apr 29 15:54:35 EDT 2016 by nano
+\* Last modified Sat Apr 30 14:40:20 EDT 2016 by nano
 \* Created Tue Apr 05 09:07:07 EDT 2016 by nano
