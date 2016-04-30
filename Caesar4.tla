@@ -26,8 +26,8 @@ ASSUME NumBallots \in Nat /\ NumBallots >= 1
 (* Ballots are of the form <<b,i>>, where b is the main ballot number and  *)
 (* i the sub-ballot number.  Ballots can be compared:                      *)
 (***************************************************************************)
-MajBallot == 0..(NumBallots-1)
-Ballot == MajBallot \times {1,2,3} \* We have three sub-ballots.
+MajorBallot == 0..(NumBallots-1)
+Ballot == MajorBallot \times {1,2,3} \* We have three sub-ballots.
 
 bal1 \prec bal2 == 
     IF bal1[1] = bal2[1]
@@ -206,7 +206,7 @@ Max(xs) == CHOOSE x \in xs : \A y \in xs : y \preceq x
     }
         
     macro Phase1Reply(p) {
-        with (c \in C; B \in MajBallot, b = Phase1(B)) {
+        with (c \in C; B \in MajorBallot, b = Phase1(B)) {
             BallotPre(c,b);
             with (t = propose[<<c, b>>].ts) {
                 \* when LastBal(c, b, p) \prec b; \* p has not participated yet in this ballot, but covered by BallotPre (\prec).
@@ -250,7 +250,7 @@ Max(xs) == CHOOSE x \in xs : \A y \in xs : y \preceq x
     }
     
     macro Phase2Reply(p) {
-        with (c \in C; B \in MajBallot, b = Phase2(B)) { 
+        with (c \in C; B \in MajorBallot, b = Phase2(B)) { 
             BallotPre(c, b);
             with (t = propose[<<c,b>>].ts) {
                 when \neg Blocked(self, c, t); \* No higher-timestamped command is blocking c.
@@ -274,7 +274,7 @@ Max(xs) == CHOOSE x \in xs : \A y \in xs : y \preceq x
     }
     
     macro Phase3Reply(p) {
-        with (c \in C; B \in MajBallot, b = Phase3(B)) {
+        with (c \in C; B \in MajorBallot, b = Phase3(B)) {
             BallotPre(c,b); 
             with (t = propose[<<c,b>>].ts) {
                 vote := [vote EXCEPT ![p] = [@ EXCEPT ![c] = @ ++ <<b, [  
@@ -347,7 +347,7 @@ Max(xs) == CHOOSE x \in xs : \A y \in xs : y \preceq x
                 }
     }
     
-    process (leader \in (C \times MajBallot)) {
+    process (leader \in (C \times MajorBallot)) {
         start:  either { \* Initial proposal for the command.
                     when self[2] = 0;
         phase1:     with (t \in Time) {
@@ -479,7 +479,7 @@ Max(xs) == CHOOSE x \in xs : \A y \in xs : y \preceq x
                             }
                         }
                     };
-        end3:       (* Decide in phase 3 *)
+        end3:       (* Decide in phase 3 *) \* TODO: seems not covered...
                     with (q \in Quorum, c = self[1], b = Phase3(self[2]) ) {
                         when \A p \in q : b \in DOMAIN vote[p][c] /\ vote[p][c][b].status = "accepted";
                         with (  ds = UNION {vote[p][c][b].seen : p \in q};
@@ -600,7 +600,7 @@ HasCmd(c, b, q) == \A p2 \in q : SeenAt(c, b, p2)
 
 vars == << ballot, vote, propose, stable, join, pc >>
 
-ProcSet == (P) \cup ((C \times MajBallot))
+ProcSet == (P) \cup ((C \times MajorBallot))
 
 Init == (* Global variables *)
         /\ ballot = [p \in P |-> [c \in C |-> <<0,1>>]]
@@ -609,11 +609,11 @@ Init == (* Global variables *)
         /\ stable = <<>>
         /\ join = {}
         /\ pc = [self \in ProcSet |-> CASE self \in P -> "acc_"
-                                        [] self \in (C \times MajBallot) -> "start"]
+                                        [] self \in (C \times MajorBallot) -> "start"]
 
 acc_(self) == /\ pc[self] = "acc_"
               /\ \/ /\ \E c \in C:
-                         \E B \in MajBallot:
+                         \E B \in MajorBallot:
                            LET b == Phase1(B) IN
                              /\ IF Phase(b) = 1 THEN ballot[self][c] = b ELSE ballot[self][c] \prec b
                              /\ <<c, b>> \in DOMAIN propose
@@ -637,7 +637,7 @@ acc_(self) == /\ pc[self] = "acc_"
                                         seen |-> s.deps,
                                         leaderDeps |-> s.deps ]>>]]
                  \/ /\ \E c \in C:
-                         \E B \in MajBallot:
+                         \E B \in MajorBallot:
                            LET b == Phase2(B) IN
                              /\ IF Phase(b) = 1 THEN ballot[self][c] = b ELSE ballot[self][c] \prec b
                              /\ <<c, b>> \in DOMAIN propose
@@ -653,7 +653,7 @@ acc_(self) == /\ pc[self] = "acc_"
                                                     vote' =       [vote EXCEPT ![self] = [@ EXCEPT ![c] = @
                                                             ++ <<b, [ts |-> t2[2], status |-> "rejected", seen |-> seen, leaderDeps |-> {}]>>]]
                  \/ /\ \E c \in C:
-                         \E B \in MajBallot:
+                         \E B \in MajorBallot:
                            LET b == Phase3(B) IN
                              /\ IF Phase(b) = 1 THEN ballot[self][c] = b ELSE ballot[self][c] \prec b
                              /\ <<c, b>> \in DOMAIN propose
@@ -850,7 +850,7 @@ leader(self) == start(self) \/ phase1(self) \/ startBal(self)
                    \/ end3(self) \/ d(self)
 
 Next == (\E self \in P: acc(self))
-           \/ (\E self \in (C \times MajBallot): leader(self))
+           \/ (\E self \in (C \times MajorBallot): leader(self))
 
 Spec == Init /\ [][Next]_vars
 
@@ -859,5 +859,5 @@ Spec == Init /\ [][Next]_vars
 
 =============================================================================
 \* Modification History
-\* Last modified Sat Apr 30 17:47:45 EDT 2016 by nano
+\* Last modified Sat Apr 30 19:22:01 EDT 2016 by nano
 \* Created Tue Apr 05 09:07:07 EDT 2016 by nano
