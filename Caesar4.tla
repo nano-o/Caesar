@@ -479,7 +479,7 @@ Max(xs) == CHOOSE x \in xs : \A y \in xs : y \preceq x
                             }
                         }
                     };
-        end3:       (* Decide in phase 3 *) \* TODO: seems not covered...
+        end3:       (* Decide in phase 3 *) \* TODO: seems not covered... okay, was because of an erroneous state constraint.
                     with (q \in Quorum, c = self[1], b = Phase3(self[2]) ) {
                         when \A p \in q : b \in DOMAIN vote[p][c] /\ vote[p][c][b].status = "accepted";
                         with (  ds = UNION {vote[p][c][b].seen : p \in q};
@@ -859,5 +859,5 @@ Spec == Init /\ [][Next]_vars
 
 =============================================================================
 \* Modification History
-\* Last modified Sat Apr 30 19:22:01 EDT 2016 by nano
+\* Last modified Sat Apr 30 19:26:00 EDT 2016 by nano
 \* Created Tue Apr 05 09:07:07 EDT 2016 by nano
