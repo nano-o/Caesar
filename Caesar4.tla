@@ -238,7 +238,7 @@ GTE(c, xs) ==
                             seen = CmdsWithLowerT(p, c, t2[2]) ) {
                       \* Record the fact that the command was rejected with t2:
                       vote := [vote EXCEPT ![p] = [@ EXCEPT ![c] = @
-                        ++ <<b, [ts |-> t2[2], status |-> "rejected-slow", seen |-> seen, leaderDeps |-> {}]>>]];
+                        ++ <<b, [ts |-> t2[2], status |-> "rejected", seen |-> seen, leaderDeps |-> {}]>>]];
                     }
                 }
             }
@@ -772,7 +772,7 @@ acc_(self) == /\ pc[self] = "acc_"
                                         /\ LET t2 == GT(c, TimeStamps(self)) IN
                                              LET seen == CmdsWithLowerT(self, c, t2[2]) IN
                                                vote' =       [vote EXCEPT ![self] = [@ EXCEPT ![c] = @
-                                                       ++ <<b, [ts |-> t2[2], status |-> "rejected-slow", seen |-> seen, leaderDeps |-> {}]>>]]
+                                                       ++ <<b, [ts |-> t2[2], status |-> "rejected", seen |-> seen, leaderDeps |-> {}]>>]]
                  \/ /\ \E c \in C:
                          \E B \in MajBallot:
                            LET b == <<B,3>> IN
@@ -804,5 +804,5 @@ Spec == Init /\ [][Next]_vars
 
 =============================================================================
 \* Modification History
-\* Last modified Sat Apr 30 14:40:20 EDT 2016 by nano
+\* Last modified Sat Apr 30 14:41:29 EDT 2016 by nano
 \* Created Tue Apr 05 09:07:07 EDT 2016 by nano
