@@ -108,8 +108,19 @@ Time == 1..MaxTime
         join = {}
 
     define {
-        
+    
         Status == {"pending", "stable", "accepted", "rejected"}
+        
+        Vote == [ts : Nat, status : Status, seen : SUBSET C, leaderDeps : SUBSET C]
+        
+        Propose == [ts : Time] \cup [ts : Nat, flag : SUBSET C] \cup [ts : Nat, deps : SUBSET C]
+        
+        TypeInvariant ==
+            /\  \A p \in P, c \in C : ballot[p][c] \in Ballot
+            /\  \A p \in P, c \in C : \E D \in SUBSET Ballot : vote[p][c] \in [D -> Vote]
+            /\  \E D \in SUBSET (C \times Ballot) : propose \in [D -> Propose]
+            /\  \E D \in SUBSET (C \times Ballot) : stable \in [D -> [ts : Nat, deps : SUBSET C]]
+            /\  join \in SUBSET (C \times Ballot)
         
         \* All the commands ever seen by p in any ballot.
         SeenCmds(p) == {c \in C : DOMAIN vote[p][c] # {}}
@@ -506,11 +517,22 @@ Time == 1..MaxTime
 
 *)
 \* BEGIN TRANSLATION
-\* Label acc of process acc at line 337 col 17 changed to acc_
+\* Label acc of process acc at line 348 col 17 changed to acc_
 VARIABLES ballot, vote, propose, stable, join, pc
 
 (* define statement *)
 Status == {"pending", "stable", "accepted", "rejected"}
+
+Vote == [ts : Nat, status : Status, seen : SUBSET C, leaderDeps : SUBSET C]
+
+Propose == [ts : Time] \cup [ts : Nat, flag : SUBSET C] \cup [ts : Nat, deps : SUBSET C]
+
+TypeInvariant ==
+    /\  \A p \in P, c \in C : ballot[p][c] \in Ballot
+    /\  \A p \in P, c \in C : \E D \in SUBSET Ballot : vote[p][c] \in [D -> Vote]
+    /\  \E D \in SUBSET (C \times Ballot) : propose \in [D -> Propose]
+    /\  \E D \in SUBSET (C \times Ballot) : stable \in [D -> [ts : Nat, deps : SUBSET C]]
+    /\  join \in SUBSET (C \times Ballot)
 
 
 SeenCmds(p) == {c \in C : DOMAIN vote[p][c] # {}}
@@ -700,14 +722,14 @@ start(self) == /\ pc[self] = "start"
 phase1(self) == /\ pc[self] = "phase1"
                 /\ \E t \in Time:
                      /\ Assert(<<(self[1]),Phase1((self[2]))>> \notin DOMAIN propose, 
-                               "Failure of assertion at line 306, column 9 of macro called at line 359, column 25.")
+                               "Failure of assertion at line 317, column 9 of macro called at line 370, column 25.")
                      /\ propose' = propose ++ <<<<(self[1]),Phase1((self[2]))>>, [ts |-> t]>>
                      /\ pc' = [pc EXCEPT ![self] = "end1"]
                 /\ UNCHANGED << ballot, vote, stable, join >>
 
 startBal(self) == /\ pc[self] = "startBal"
                   /\ Assert(<<(self[1]),Phase1((self[2]))>> \notin join, 
-                            "Failure of assertion at line 324, column 9 of macro called at line 363, column 21.")
+                            "Failure of assertion at line 335, column 9 of macro called at line 374, column 21.")
                   /\ join' = (join \cup {<<(self[1]),Phase1((self[2]))>>})
                   /\ pc' = [pc EXCEPT ![self] = "recover"]
                   /\ UNCHANGED << ballot, vote, propose, stable >>
@@ -718,47 +740,47 @@ recover(self) == /\ pc[self] = "recover"
                         LET B == self[2] IN
                           /\ \A p \in q : Phase1(B) \preceq ballot[p][c]
                           /\ Assert(\A p \in q : ballot[p][c] = Phase1(B) \/ Phase3(B) \prec ballot[p][c], 
-                                    "Failure of assertion at line 366, column 25.")
+                                    "Failure of assertion at line 377, column 25.")
                           /\ LET maxBal == MaxBal(c, Phase1(B), q) IN
                                /\ Assert(maxBal[1] < B, 
-                                         "Failure of assertion at line 369, column 29.")
+                                         "Failure of assertion at line 380, column 29.")
                                /\ IF Maj(maxBal) # -1
                                      THEN /\ LET ps == {p \in q : ParticipatedIn(maxBal, c, p)} IN
                                                \E p \in ps:
                                                  \/ /\ \A p2 \in ps : vote[p2][c][maxBal].status \notin {"stable"}
                                                     /\ vote[p][c][maxBal].status = "accepted"
                                                     /\ Assert(Phase(maxBal) = 3, 
-                                                              "Failure of assertion at line 377, column 41.")
+                                                              "Failure of assertion at line 388, column 41.")
                                                     /\ LET e == vote[p][c][maxBal] IN
                                                          LET t == e.ts IN
                                                            LET ds == e.leaderDeps IN
                                                              /\ Assert(<<c,Phase3(B)>> \notin DOMAIN propose, 
-                                                                       "Failure of assertion at line 318, column 9 of macro called at line 379, column 45.")
+                                                                       "Failure of assertion at line 329, column 9 of macro called at line 390, column 45.")
                                                              /\ propose' = propose ++ <<<<c,Phase3(B)>>, [ts |-> t, deps |-> ds]>>
                                                              /\ pc' = [pc EXCEPT ![self] = "end3"]
                                                  \/ /\ \A p2 \in ps : vote[p2][c][maxBal].status \notin {"accepted","stable"}
                                                     /\ vote[p][c][maxBal].status \in {"rejected"}
                                                     /\ Assert(Phase(maxBal) \in {1,2}, 
-                                                              "Failure of assertion at line 385, column 41.")
+                                                              "Failure of assertion at line 396, column 41.")
                                                     /\ Assert(   \A p2 \in P : c \in DOMAIN vote[p2] =>
                                                               \A b2 \in DOMAIN vote[p2][c] : b2 \preceq maxBal =>
                                                                   vote[p2][c][b2].status \notin {"accepted","stable"}, 
-                                                              "Failure of assertion at line 386, column 41.")
+                                                              "Failure of assertion at line 397, column 41.")
                                                     /\ \E t \in Time:
                                                          /\ Assert(<<c,Phase1(B)>> \notin DOMAIN propose, 
-                                                                   "Failure of assertion at line 306, column 9 of macro called at line 390, column 45.")
+                                                                   "Failure of assertion at line 317, column 9 of macro called at line 401, column 45.")
                                                          /\ propose' = propose ++ <<<<c,Phase1(B)>>, [ts |-> t]>>
                                                          /\ pc' = [pc EXCEPT ![self] = "end1"]
                                                  \/ /\  \A p2 \in ps :
                                                        vote[p2][c][maxBal].status \notin {"accepted","stable","rejected"}
                                                     /\ Phase(maxBal) = 2 /\ vote[p][c][maxBal].status = "pending"
                                                     /\ Assert(\A p2 \in ps : vote[p][c][maxBal].status = "pending", 
-                                                              "Failure of assertion at line 397, column 41.")
+                                                              "Failure of assertion at line 408, column 41.")
                                                     /\ LET e == vote[p][c][maxBal] IN
                                                          LET t == e.ts IN
                                                            LET ds == e.leaderDeps IN
                                                              /\ Assert(<<c,Phase2(B)>> \notin DOMAIN propose, 
-                                                                       "Failure of assertion at line 312, column 9 of macro called at line 399, column 45.")
+                                                                       "Failure of assertion at line 323, column 9 of macro called at line 410, column 45.")
                                                              /\ propose' = propose ++ <<<<c,Phase2(B)>>, [ts |-> t, deps |-> ds]>>
                                                              /\ pc' = [pc EXCEPT ![self] = "end2"]
                                                  \/ /\ Phase(maxBal) = 1
@@ -766,7 +788,7 @@ recover(self) == /\ pc[self] = "recover"
                                                        vote[p2][c][maxBal].status \notin {"accepted","stable","rejected"}
                                                     /\ vote[p][c][maxBal].status = "pending"
                                                     /\ Assert(\A p2 \in ps : vote[p][c][maxBal].status = "pending", 
-                                                              "Failure of assertion at line 407, column 41.")
+                                                              "Failure of assertion at line 418, column 41.")
                                                     /\ LET fast == {q2 \in FastQuorum : q2 \cap q \subseteq ps} IN
                                                          LET t == vote[p][c][maxBal].ts IN
                                                            IF fast # {}
@@ -775,16 +797,16 @@ recover(self) == /\ pc[self] = "recover"
                                                                                     \E p2 \in q2 \cap ps :
                                                                                         c2 \in vote[p2][c][maxBal].seen)} IN
                                                                           /\ Assert(<<c,Phase1(B)>> \notin DOMAIN propose, 
-                                                                                    "Failure of assertion at line 418, column 53.")
+                                                                                    "Failure of assertion at line 429, column 53.")
                                                                           /\ propose' = propose ++ <<<<c,Phase1(B)>>, [ts |-> t, flag |-> flag]>>
                                                                    /\ pc' = [pc EXCEPT ![self] = "end1"]
                                                               ELSE /\ Assert(<<c,Phase1(B)>> \notin DOMAIN propose, 
-                                                                             "Failure of assertion at line 306, column 9 of macro called at line 423, column 49.")
+                                                                             "Failure of assertion at line 317, column 9 of macro called at line 434, column 49.")
                                                                    /\ propose' = propose ++ <<<<c,Phase1(B)>>, [ts |-> t]>>
                                                                    /\ pc' = [pc EXCEPT ![self] = "end1"]
                                      ELSE /\ \E t \in Time:
                                                /\ Assert(<<c,Phase1(B)>> \notin DOMAIN propose, 
-                                                         "Failure of assertion at line 306, column 9 of macro called at line 430, column 37.")
+                                                         "Failure of assertion at line 317, column 9 of macro called at line 441, column 37.")
                                                /\ propose' = propose ++ <<<<c,Phase1(B)>>, [ts |-> t]>>
                                                /\ pc' = [pc EXCEPT ![self] = "end1"]
                  /\ UNCHANGED << ballot, vote, stable, join >>
@@ -808,7 +830,7 @@ end1(self) == /\ pc[self] = "end1"
                              /\ LET ds == UNION {vote[p][c][b].seen : p \in q} IN
                                   LET t == RetryTimestamp(c, b, q) IN
                                     /\ Assert(<<c,Phase3((b[1]))>> \notin DOMAIN propose, 
-                                              "Failure of assertion at line 318, column 9 of macro called at line 454, column 29.")
+                                              "Failure of assertion at line 329, column 9 of macro called at line 465, column 29.")
                                     /\ propose' = propose ++ <<<<c,Phase3((b[1]))>>, [ts |-> (t[2]), deps |-> ds]>>
                                     /\ pc' = [pc EXCEPT ![self] = "end3"]
                     /\ UNCHANGED stable
@@ -821,9 +843,9 @@ end1(self) == /\ pc[self] = "end1"
                                   LET p2 == CHOOSE p2 \in q : TRUE IN
                                     LET t == vote[p2][c][b].ts IN
                                       /\ Assert(\A p \in q : vote[p][c][b].ts = t, 
-                                                "Failure of assertion at line 464, column 29.")
+                                                "Failure of assertion at line 475, column 29.")
                                       /\ Assert(<<c,Phase2((b[1]))>> \notin DOMAIN propose, 
-                                                "Failure of assertion at line 312, column 9 of macro called at line 465, column 29.")
+                                                "Failure of assertion at line 323, column 9 of macro called at line 476, column 29.")
                                       /\ propose' = propose ++ <<<<c,Phase2((b[1]))>>, [ts |-> t, deps |-> ds]>>
                                       /\ pc' = [pc EXCEPT ![self] = "end2"]
                     /\ UNCHANGED stable
@@ -839,7 +861,7 @@ end2(self) == /\ pc[self] = "end2"
                                   LET ds == vote[p2][c][b].leaderDeps IN
                                     LET t == vote[p2][c][b].ts IN
                                       /\ Assert(\A p \in q : vote[p][c][b].ts = t, 
-                                                "Failure of assertion at line 477, column 29.")
+                                                "Failure of assertion at line 488, column 29.")
                                       /\ stable' = stable ++ <<<<c,b>>, [ts |-> t, deps |-> ds]>>
                                       /\ pc' = [pc EXCEPT ![self] = "decided"]
                     /\ UNCHANGED propose
@@ -851,7 +873,7 @@ end2(self) == /\ pc[self] = "end2"
                              /\ LET ds == UNION {vote[p2][c][b].seen : p2 \in q} IN
                                   LET t == RetryTimestamp(c, b, q) IN
                                     /\ Assert(<<c,Phase3((b[1]))>> \notin DOMAIN propose, 
-                                              "Failure of assertion at line 318, column 9 of macro called at line 489, column 29.")
+                                              "Failure of assertion at line 329, column 9 of macro called at line 500, column 29.")
                                     /\ propose' = propose ++ <<<<c,Phase3((b[1]))>>, [ts |-> (t[2]), deps |-> ds]>>
                                     /\ pc' = [pc EXCEPT ![self] = "end3"]
                     /\ UNCHANGED stable
@@ -865,7 +887,7 @@ end3(self) == /\ pc[self] = "end3"
                        /\ LET ds == UNION {vote[p][c][b].seen : p \in q} IN
                             LET t == propose[<<c,b>>].ts IN
                               /\ Assert(\A p \in q : vote[p][c][b].ts = t, 
-                                        "Failure of assertion at line 498, column 25.")
+                                        "Failure of assertion at line 509, column 25.")
                               /\ stable' = stable ++ <<<<c,b>>, [ts |-> t, deps |-> ds]>>
                               /\ pc' = [pc EXCEPT ![self] = "decided"]
               /\ UNCHANGED << ballot, vote, propose, join >>
@@ -887,5 +909,5 @@ Spec == Init /\ [][Next]_vars
 \* END TRANSLATION
 =============================================================================
 \* Modification History
-\* Last modified Mon May 02 09:57:11 EDT 2016 by nano
+\* Last modified Mon May 02 10:06:32 EDT 2016 by nano
 \* Created Tue Apr 05 09:07:07 EDT 2016 by nano
