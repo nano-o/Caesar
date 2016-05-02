@@ -518,7 +518,7 @@ Time == 1..MaxTime
                 }; 
         end3:   (* Decide in phase 3 *)
                 with (q \in Quorum, c = self[1], b = Phase3(self[2]) ) {
-                    when AcceptedOnQuorum(q, c, b);
+                    when AcceptedOnQuorum(c, b, q);
                     with (  ds = VotedDeps(q, c, b); t = propose[<<c,b>>].ts ) {
                         assert \A p \in q : vote[p][c][b].ts = t;
                         MakeStable(c, b, t, ds);
@@ -906,7 +906,7 @@ end3(self) == /\ pc[self] = "end3"
               /\ \E q \in Quorum:
                    LET c == self[1] IN
                      LET b == Phase3(self[2]) IN
-                       /\ AcceptedOnQuorum(q, c, b)
+                       /\ AcceptedOnQuorum(c, b, q)
                        /\ LET ds == VotedDeps(q, c, b) IN
                             LET t == propose[<<c,b>>].ts IN
                               /\ Assert(\A p \in q : vote[p][c][b].ts = t, 
@@ -932,5 +932,5 @@ Spec == Init /\ [][Next]_vars
 \* END TRANSLATION
 =============================================================================
 \* Modification History
-\* Last modified Mon May 02 17:57:59 EDT 2016 by nano
+\* Last modified Mon May 02 18:11:39 EDT 2016 by nano
 \* Created Tue Apr 05 09:07:07 EDT 2016 by nano
