@@ -11,6 +11,15 @@
 (*                                                                         *)
 (* 36M reachable states, 8 hours on whitewhale, depth 49.                  *)
 (*                                                                         *)
+(* With 3 acceptors, 2 ballots, MaxTime=1, and the following constraint:   *)
+(*                                                                         *)
+(*     \A b \in Ballot :  <<c1, b>> \notin join                            *)
+(*                                                                         *)
+(* 4.7M reachable states, 5 minutes on whitewhale, depth 43.               *)
+(*                                                                         *)
+(* With 3 acceptors, 2 ballots, MaxTime=1, and no constraint: 200M         *)
+(* reachable states, 3 hours 35 minutes on whitewhale, depth 52.           *)
+(*                                                                         *)
 (***************************************************************************)
 
 EXTENDS Naturals, FiniteSets, TLC, Sequences, Integers
@@ -909,5 +918,5 @@ Spec == Init /\ [][Next]_vars
 \* END TRANSLATION
 =============================================================================
 \* Modification History
-\* Last modified Mon May 02 10:06:32 EDT 2016 by nano
+\* Last modified Mon May 02 15:48:23 EDT 2016 by nano
 \* Created Tue Apr 05 09:07:07 EDT 2016 by nano
