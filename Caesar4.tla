@@ -1,110 +1,49 @@
 ---------------------------- MODULE Caesar4 ----------------------------
 
-(****************************************************************************
-Model-checking results:
-
-With 5 acceptors, 2 ballots, MaxTime=1, and the following constraint:
-
-    /\ \A x \in {2,3} : <<c1, <<0,x>>>> \notin DOMAIN propose
-    /\ \A b \in Ballot :  <<c1, b>> \notin join
-    /\ \A x \in {2,3} : <<c2, <<0,x>>>> \notin DOMAIN propose
-
-36M reachable states, 8 hours on whitewhale, depth 49.
-
-With 3 acceptors, 2 ballots, MaxTime=1, and the following constraint:
-
-    \A b \in Ballot :  <<c1, b>> \notin join
-
-4.7M reachable states, 5 minutes on whitewhale, depth 43.
-
-With 3 acceptors, 2 ballots, MaxTime=1, and no constraint: 200M
-reachable states, 3 hours 35 minutes on whitewhale, depth 52.
-
-With 5 acceptors, 2 ballots, MaxTime=1, and the following constraint:
-
-    /\ \A x \in {2} : <<c1, <<0,x>>>> \notin DOMAIN propose
-    /\ \A b \in Ballot :  <<c1, b>> \notin join
-    /\ \A x \in {1,3} : <<c2, <<1,x>>>> \notin DOMAIN propose
-    /\ \A x \in {3} : <<c2, <<0,x>>>> \notin DOMAIN propose
-    /\ \A A \in {A \in SUBSET P : \E q \in Quorum : q \subseteq A /\ q # A} :
-        \E p \in A : DOMAIN vote[p][c1] = {}
-
-****************************************************************************)
-
-EXTENDS Naturals, FiniteSets, TLC, Sequences, Integers
-
 (***************************************************************************)
-(* Adding a key-value mapping (kv[1] is the key, kv[2] the value) to a map *)
-(***************************************************************************)
-f ++ kv == [x \in DOMAIN f \union {kv[1]} |-> IF x = kv[1] THEN kv[2] ELSE f[x]]
-
-(***************************************************************************)
-(* The image of a map                                                      *)
-(***************************************************************************)
-Image(f) == {f[x] : x \in DOMAIN f}
-
-(***************************************************************************)
-(* P is the set of acceptors.  MaxTime bounds the timestamp that can be    *)
-(* assigned to proposals, but not to retries.  CmdId(c) must assign a      *)
-(* natural number to a command.  It is used to break time in timestamps.   *)
-(***************************************************************************)
-CONSTANTS P, MaxTime, Quorum, FastQuorum, NumBallots, C, CmdId(_)
-
-ASSUME NumBallots \in Nat /\ NumBallots >= 1
-
-ASSUME \A c \in C : CmdId(c) \in Nat /\ \A c2 \in C : c # c2 => CmdId(c) # CmdId(c2)
-
-ASSUME \A Q \in Quorum : Q \subseteq P
-ASSUME \A Q1,Q2 \in Quorum : Q1 \cap Q2 # {}
-ASSUME \A Q1,Q2 \in FastQuorum : \A Q3 \in Quorum : Q1 \cap Q2 \cap Q3 # {}
-
-(***************************************************************************)
-(* Ballots are of the form <<b,i>>, where b is the main ballot number and  *)
-(* i the sub-ballot number.  Ballots are totally ordered:                  *)
-(***************************************************************************)
-MajorBallot == 0..(NumBallots-1)
-Ballot == MajorBallot \times {1,2,3} \* We have three sub-ballots.
-
-bal1 \prec bal2 == 
-    IF bal1[1] = bal2[1]
-    THEN bal1[2] < bal2[2]
-    ELSE bal1[1] < bal2[1]
-
-bal1 \preceq bal2 ==
-    bal1 \prec bal2 \/ bal1 = bal2
-    
-(***************************************************************************)
-(* The maximum element in a set of ballots.                                *)
-(***************************************************************************)
-Max(xs) == CHOOSE x \in xs : \A y \in xs : y \preceq x
-
-(***************************************************************************)
-(* The predecessor of a ballot.                                            *)
-(***************************************************************************)
-Pred(b) == CASE 
-    b[2] = 1 -> <<b[1]-1,3>>
-[]  b[2] = 2 -> <<b[1],1>>
-[]  b[2] = 3 -> <<b[1],2>>
-
-(***************************************************************************)
-(* Majority quorums and three fourths quorums.  For provinding concrete    *)
-(* quorums to the model-checker.                                           *)
-(***************************************************************************)
-MajQuorums == {Q \in SUBSET P : 2 * Cardinality(Q) > Cardinality(P)}
-ThreeFourthQuorums == {Q \in SUBSET P : 4 * Cardinality(Q) > 3 * Cardinality(P)}
-
-(***************************************************************************)
-(* An ordering relation among pairs of the form <<c, timestamp>>.  Allows  *)
-(* to break ties between timestamps by also using the command to compute   *)
-(* the ordering.                                                           *)
+(* Model-checking results:                                                 *)
 (*                                                                         *)
-(* CAUTION: C must not be a symmetrical set in TLC's configuration,        *)
-(* because commands are ordered.                                           *)
+(* With 3 acceptors, 2 ballots, MaxTime=1, and the following constraint:   *)
+(*                                                                         *)
+(*     \A b \in Ballot :  <<c1, b>> \notin join                            *)
+(*                                                                         *)
+(* 6.3M reachable states, 6 minutes 25 seconds on whitewhale, depth 43.    *)
+(*                                                                         *)
+(* With 3 acceptors, 2 ballots, MaxTime=1, and no constraint:              *)
+(*                                                                         *)
+(* ?? 200M reachable states, 3 hours 35 minutes on whitewhale, depth 52.   *)
+(*                                                                         *)
+(* ---                                                                     *)
+(*                                                                         *)
+(* With 5 acceptors, 2 ballots, MaxTime=1, and the following constraint:   *)
+(*                                                                         *)
+(*     /\ \A x \in {2,3} : <<c1, <<0,x>>>> \notin DOMAIN propose           *)
+(*     /\ \A b \in Ballot :  <<c1, b>> \notin join                         *)
+(*     /\ \A x \in {2,3} : <<c2, <<0,x>>>> \notin DOMAIN propose           *)
+(*                                                                         *)
+(* 36M reachable states, 8 hours on whitewhale, depth 49.                  *)
+(*                                                                         *)
+(*                                                                         *)
+(*                                                                         *)
+(* With 5 acceptors, 2 ballots, MaxTime=1, and the following constraint:   *)
+(*                                                                         *)
+(*     /\ \A x \in {2} : <<c1, <<0,x>>>> \notin DOMAIN propose             *)
+(*     /\ \A b \in Ballot :  <<c1, b>> \notin join                         *)
+(*     /\ \A x \in {1,3} : <<c2, <<1,x>>>> \notin DOMAIN propose           *)
+(*     /\ \A x \in {3} : <<c2, <<0,x>>>> \notin DOMAIN propose             *)
+(*     /\ \A A \in {A \in SUBSET P : \E q \in Quorum : q \subseteq A /\ q # A} : *)
+(*         \E p \in A : DOMAIN vote[p][c1] = {}                            *)
+(*                                                                         *)
 (***************************************************************************)
-ts1 \sqsubset ts2 == 
-    IF ts1[2] = ts2[2] \* if same timestamp:
-    THEN CmdId(ts1[1]) < CmdId(ts2[1]) \* break ties with command id.
-    ELSE ts1[2] < ts2[2] \* else compare timestamps.
+
+EXTENDS TLC, Sequences, Integers, Maps, Quorums, Commands, Ballots
+
+(***************************************************************************)
+(* MaxTime bounds the timestamp that can be assigned to commands, but not  *)
+(* to retries.  CmdId(c) must assign a natural number to a command.  It is *)
+(* used to break time in timestamps.                                       *)
+(***************************************************************************)
+CONSTANTS MaxTime
 
 Time == 1..MaxTime
     
@@ -169,11 +108,13 @@ Time == 1..MaxTime
         \* The timestamp found at p in the vote for c in the highest ballot.
         TimeStampOf(c, p) == MaxVote(c,p).ts
         
+        \* All the timestamps on acceptor p
         TimeStamps(p) == {<<c, TimeStampOf(c,p)>> : c \in SeenCmds(p)}
         
         \* All the commands at p which have a lower timestamp than <<c,t>>
         CmdsWithLowerT(p, c, t) == {c2 \in SeenCmds(p) : <<c2, TimeStampOf(c2,p)>> \sqsubset <<c,t>>}
         
+        \* The dependencies to include in the phase-1 reply of an acceptor.
         Phase1ReplyDeps(p, c, b, t) ==       
             IF "must" \in DOMAIN propose[<<c, b>>]
             THEN 
@@ -186,10 +127,13 @@ Time == 1..MaxTime
                 IN propose[<<c, b>>].must \cup new
             ELSE CmdsWithLowerT(p, c, t)
                             
+        \* the set of acceptors in q that participated in ballot b of command c.
         ParticipatedIn(b, c, q) == {p \in q : b \in DOMAIN vote[p][c]}
         
+        \* The local dependencies of c at p.
         Deps(c, p) == MaxVote(c, p).deps \ {c}
         
+        \* c1 at timestamp t1 conflicts with c2 on p. 
         Conflicts(p, c1, t1, c2) ==
             /\ <<c1,t1>> \sqsubset <<c2, TimeStampOf(c2,p)>>
             /\ c1 \notin Deps(c2,p)
@@ -198,42 +142,29 @@ Time == 1..MaxTime
             /\ Conflicts(p, c1, t1, c2)
             /\ MaxVote(c2,p).status \notin {"stable","accepted"}
         
+        \* command c with timestamp t is blocked on p.
         Blocked(p, c, t) == \exists c2 \in SeenCmds(p) : Blocks(p, c, t, c2)
         
-        Cmd(leader) == leader[1]
-        Bal(leader) == leader[2] 
-        
+        \* Command c with timestamp t does not encounter any conflict on acceptor p.
         NoConflict(p, c, t) == \forall c2 \in SeenCmds(p) : \neg Conflicts(p, c, t, c2)
-        
-        
-        (***************************************************************************)
-        (* A timestamp for c strictly greater than the max of the timstamps xs.    *)
-        (***************************************************************************)
-        GT(c, xs) ==  
-            LET max == CHOOSE x \in xs : \A y \in xs : x # y => y \sqsubset x
-            IN IF CmdId(max[1]) < CmdId(c) THEN <<c, max[2]>> ELSE <<c, max[2]+1>> 
             
+        \* The timestamp computed locally by an acceptor when it reject a command.
         RejectTimestamp(c, p) == GT(c, TimeStamps(p))
-        
-        (***************************************************************************)
-        (* A timestamp fo c greater than or equal to the max of the timstamps xs.  *)
-        (***************************************************************************)
-        GTE(c, xs) ==  
-            LET max == CHOOSE x \in xs : \A y \in xs : x # y => y \sqsubset x
-            IN IF CmdId(max[1]) <= CmdId(c) THEN <<c, max[2]>> ELSE <<c, max[2]+1>> 
             
+        \* The timestamp computed by a leader when it retries a command after a reject.
         RetryTimestamp(c, b, q) == GTE(c, {<<c, vote[p][c][b].ts>> : p \in q})
         
-        ReachedQuorum(c, b, q) == \A p \in q : SeenAt(c, b, p)
-        
+        \* Command c is pending in ballot b on all acceptors in quorum q.
         PendingOnQuorum(c, b, q) == \A p \in q : 
             /\  SeenAt(c, b, p)
             /\  vote[p][c][b].status = "pending"
             
+        \* Command c has been reject by one acceptor among quorum q.
         RejectedOnQuorum(c, b, q) == 
             /\  \A p \in q : SeenAt(c, b, p)
             /\  \E p \in q : vote[p][c][b].status = "rejected"
         
+        \* Command c has been accepted in ballot b by all acceptors in quorum q.
         AcceptedOnQuorum(c, b, q) == \A p \in q : 
             /\  SeenAt(c, b, p)
             /\  vote[p][c][b].status = "accepted"
@@ -301,18 +232,13 @@ Time == 1..MaxTime
             with (t = propose[<<c,b>>].ts) {
                 when \neg Blocked(self, c, t); \* No higher-timestamped command is blocking c.
                 if (NoConflict(p, c, t)) {
-                    with (deps = propose[<<c,b>>].deps) {
-                        vote := [vote EXCEPT ![p] = [@ EXCEPT ![c] = @ ++ 
-                            <<b, [ts |-> t, status |-> "pending", deps |-> deps]>>]];
-                    }
+                    vote := [vote EXCEPT ![p] = [@ EXCEPT ![c] = @ ++ 
+                        <<b, [ts |-> t, status |-> "pending", deps |-> propose[<<c,b>>].deps]>>]];
                 }
                 else {
-                    \* Collect all commands received so far; compute a strict upper bound on their timestamp:
-                    with (  t2 = RejectTimestamp(c, p),
-                            seen = CmdsWithLowerT(p, c, t2[2]) ) {
-                      \* Record the fact that the command was rejected with t2:
+                    with (t2 = RejectTimestamp(c, p)) {
                       vote := [vote EXCEPT ![p] = [@ EXCEPT ![c] = @
-                        ++ <<b, [ts |-> t2[2], status |-> "rejected", deps |-> seen]>>]];
+                        ++ <<b, [ts |-> t2[2], status |-> "rejected", deps |-> CmdsWithLowerT(p, c, t2[2])]>>]];
                     }
                 }
             }
@@ -530,7 +456,7 @@ Time == 1..MaxTime
 
 *)
 \* BEGIN TRANSLATION
-\* Label acc of process acc at line 385 col 17 changed to acc_
+\* Label acc of process acc at line 311 col 17 changed to acc_
 VARIABLES ballot, vote, propose, stable, join, pc
 
 (* define statement *)
@@ -576,10 +502,12 @@ MaxBal(c, B, q) ==
 
 TimeStampOf(c, p) == MaxVote(c,p).ts
 
+
 TimeStamps(p) == {<<c, TimeStampOf(c,p)>> : c \in SeenCmds(p)}
 
 
 CmdsWithLowerT(p, c, t) == {c2 \in SeenCmds(p) : <<c2, TimeStampOf(c2,p)>> \sqsubset <<c,t>>}
+
 
 Phase1ReplyDeps(p, c, b, t) ==
     IF "must" \in DOMAIN propose[<<c, b>>]
@@ -593,9 +521,12 @@ Phase1ReplyDeps(p, c, b, t) ==
         IN propose[<<c, b>>].must \cup new
     ELSE CmdsWithLowerT(p, c, t)
 
+
 ParticipatedIn(b, c, q) == {p \in q : b \in DOMAIN vote[p][c]}
 
+
 Deps(c, p) == MaxVote(c, p).deps \ {c}
+
 
 Conflicts(p, c1, t1, c2) ==
     /\ <<c1,t1>> \sqsubset <<c2, TimeStampOf(c2,p)>>
@@ -605,41 +536,28 @@ Blocks(p, c1, t1, c2) ==
     /\ Conflicts(p, c1, t1, c2)
     /\ MaxVote(c2,p).status \notin {"stable","accepted"}
 
+
 Blocked(p, c, t) == \exists c2 \in SeenCmds(p) : Blocks(p, c, t, c2)
 
-Cmd(leader) == leader[1]
-Bal(leader) == leader[2]
 
 NoConflict(p, c, t) == \forall c2 \in SeenCmds(p) : \neg Conflicts(p, c, t, c2)
 
 
-
-
-
-GT(c, xs) ==
-    LET max == CHOOSE x \in xs : \A y \in xs : x # y => y \sqsubset x
-    IN IF CmdId(max[1]) < CmdId(c) THEN <<c, max[2]>> ELSE <<c, max[2]+1>>
-
 RejectTimestamp(c, p) == GT(c, TimeStamps(p))
 
 
-
-
-GTE(c, xs) ==
-    LET max == CHOOSE x \in xs : \A y \in xs : x # y => y \sqsubset x
-    IN IF CmdId(max[1]) <= CmdId(c) THEN <<c, max[2]>> ELSE <<c, max[2]+1>>
-
 RetryTimestamp(c, b, q) == GTE(c, {<<c, vote[p][c][b].ts>> : p \in q})
 
-ReachedQuorum(c, b, q) == \A p \in q : SeenAt(c, b, p)
 
 PendingOnQuorum(c, b, q) == \A p \in q :
     /\  SeenAt(c, b, p)
     /\  vote[p][c][b].status = "pending"
 
+
 RejectedOnQuorum(c, b, q) ==
     /\  \A p \in q : SeenAt(c, b, p)
     /\  \E p \in q : vote[p][c][b].status = "rejected"
+
 
 AcceptedOnQuorum(c, b, q) == \A p \in q :
     /\  SeenAt(c, b, p)
@@ -717,13 +635,11 @@ acc_(self) == /\ pc[self] = "acc_"
                              /\ LET t == propose[<<c,b>>].ts IN
                                   /\ \neg Blocked(self, c, t)
                                   /\ IF NoConflict(self, c, t)
-                                        THEN /\ LET deps == propose[<<c,b>>].deps IN
-                                                  vote' =     [vote EXCEPT ![self] = [@ EXCEPT ![c] = @ ++
-                                                          <<b, [ts |-> t, status |-> "pending", deps |-> deps]>>]]
+                                        THEN /\ vote' =     [vote EXCEPT ![self] = [@ EXCEPT ![c] = @ ++
+                                                        <<b, [ts |-> t, status |-> "pending", deps |-> propose[<<c,b>>].deps]>>]]
                                         ELSE /\ LET t2 == RejectTimestamp(c, self) IN
-                                                  LET seen == CmdsWithLowerT(self, c, t2[2]) IN
-                                                    vote' =       [vote EXCEPT ![self] = [@ EXCEPT ![c] = @
-                                                            ++ <<b, [ts |-> t2[2], status |-> "rejected", deps |-> seen]>>]]
+                                                  vote' =       [vote EXCEPT ![self] = [@ EXCEPT ![c] = @
+                                                          ++ <<b, [ts |-> t2[2], status |-> "rejected", deps |-> CmdsWithLowerT(self, c, t2[2])]>>]]
                  \/ /\ \E c \in C:
                          \E B \in MajorBallot:
                            LET b == Phase3(B) IN
@@ -755,14 +671,14 @@ start(self) == /\ pc[self] = "start"
 phase1(self) == /\ pc[self] = "phase1"
                 /\ \E t \in Time:
                      /\ Assert(<<(self[1]),Phase1((self[2]))>> \notin DOMAIN propose, 
-                               "Failure of assertion at line 354, column 9 of macro called at line 407, column 25.")
+                               "Failure of assertion at line 280, column 9 of macro called at line 333, column 25.")
                      /\ propose' = propose ++ <<<<(self[1]),Phase1((self[2]))>>, [ts |-> t]>>
                      /\ pc' = [pc EXCEPT ![self] = "end1"]
                 /\ UNCHANGED << ballot, vote, stable, join >>
 
 startBal(self) == /\ pc[self] = "startBal"
                   /\ Assert(<<(self[1]),Phase1((self[2]))>> \notin join, 
-                            "Failure of assertion at line 372, column 9 of macro called at line 411, column 21.")
+                            "Failure of assertion at line 298, column 9 of macro called at line 337, column 21.")
                   /\ join' = (join \cup {<<(self[1]),Phase1((self[2]))>>})
                   /\ pc' = [pc EXCEPT ![self] = "recover"]
                   /\ UNCHANGED << ballot, vote, propose, stable >>
@@ -773,15 +689,15 @@ recover(self) == /\ pc[self] = "recover"
                         LET B == self[2] IN
                           /\ \A p \in q : Phase1(B) \preceq ballot[p][c]
                           /\ Assert(\A p \in q : ballot[p][c] \notin {Phase2(B),Phase3(B)}, 
-                                    "Failure of assertion at line 416, column 25.")
+                                    "Failure of assertion at line 342, column 25.")
                           /\ LET maxBal == MaxBal(c, B, q) IN
                                LET ps == ParticipatedIn(maxBal, c, q) IN
                                  /\ Assert(maxBal[1] < B, 
-                                           "Failure of assertion at line 418, column 29.")
+                                           "Failure of assertion at line 344, column 29.")
                                  /\ IF Maj(maxBal) = -1
                                        THEN /\ \E t \in Time:
                                                  /\ Assert(<<c,Phase1(B)>> \notin DOMAIN propose, 
-                                                           "Failure of assertion at line 354, column 9 of macro called at line 421, column 37.")
+                                                           "Failure of assertion at line 280, column 9 of macro called at line 347, column 37.")
                                                  /\ propose' = propose ++ <<<<c,Phase1(B)>>, [ts |-> t]>>
                                                  /\ pc' = [pc EXCEPT ![self] = "end1"]
                                        ELSE /\ IF \E p \in ps : vote[p][c][maxBal].status = "stable"
@@ -793,32 +709,32 @@ recover(self) == /\ pc[self] = "recover"
                                                                        LET t == v.ts IN
                                                                          LET ds == v.deps IN
                                                                            /\ Assert(<<c,Phase3(B)>> \notin DOMAIN propose, 
-                                                                                     "Failure of assertion at line 366, column 9 of macro called at line 429, column 37.")
+                                                                                     "Failure of assertion at line 292, column 9 of macro called at line 355, column 37.")
                                                                            /\ propose' = propose ++ <<<<c,Phase3(B)>>, [ts |-> t, deps |-> ds]>>
                                                                            /\ pc' = [pc EXCEPT ![self] = "end3"]
                                                              ELSE /\ IF Phase(maxBal) \in {1,2} /\ Rejected(c, ps, maxBal)
                                                                         THEN /\ Assert(   \A p2 \in P : c \in DOMAIN vote[p2] =>
                                                                                        \A b2 \in DOMAIN vote[p2][c] : b2 \preceq maxBal =>
                                                                                            vote[p2][c][b2].status \notin {"accepted","stable"}, 
-                                                                                       "Failure of assertion at line 434, column 33.")
+                                                                                       "Failure of assertion at line 360, column 33.")
                                                                              /\ \E t \in Time:
                                                                                   /\ Assert(<<c,Phase1(B)>> \notin DOMAIN propose, 
-                                                                                            "Failure of assertion at line 354, column 9 of macro called at line 438, column 37.")
+                                                                                            "Failure of assertion at line 280, column 9 of macro called at line 364, column 37.")
                                                                                   /\ propose' = propose ++ <<<<c,Phase1(B)>>, [ts |-> t]>>
                                                                                   /\ pc' = [pc EXCEPT ![self] = "end1"]
                                                                         ELSE /\ IF Phase(maxBal) = 2 /\ Pending(c, ps, maxBal)
                                                                                    THEN /\ Assert(\A p2 \in ps : vote[p2][c][maxBal].status = "pending", 
-                                                                                                  "Failure of assertion at line 442, column 33.")
+                                                                                                  "Failure of assertion at line 368, column 33.")
                                                                                         /\ LET v == AVote(ps, c, maxBal) IN
                                                                                              LET t == v.ts IN
                                                                                                LET ds == v.deps IN
                                                                                                  /\ Assert(<<c,Phase2(B)>> \notin DOMAIN propose, 
-                                                                                                           "Failure of assertion at line 360, column 9 of macro called at line 444, column 37.")
+                                                                                                           "Failure of assertion at line 286, column 9 of macro called at line 370, column 37.")
                                                                                                  /\ propose' = propose ++ <<<<c,Phase2(B)>>, [ts |-> t, deps |-> ds]>>
                                                                                                  /\ pc' = [pc EXCEPT ![self] = "end2"]
                                                                                    ELSE /\ IF Phase(maxBal) = 1 /\ Pending(c, ps, maxBal)
                                                                                               THEN /\ Assert(\A p2 \in ps : vote[p2][c][maxBal].status = "pending", 
-                                                                                                             "Failure of assertion at line 448, column 33.")
+                                                                                                             "Failure of assertion at line 374, column 33.")
                                                                                                    /\ LET fast == {q2 \in FastQuorum : q2 \cap q \subseteq ps} IN
                                                                                                         LET t == AVote(ps, c, maxBal).ts IN
                                                                                                           IF fast # {}
@@ -827,15 +743,15 @@ recover(self) == /\ pc[self] = "recover"
                                                                                                                                    \E p2 \in q2 \cap ps :
                                                                                                                                        c2 \in vote[p2][c][maxBal].deps)} IN
                                                                                                                          /\ Assert(<<c,Phase1(B)>> \notin DOMAIN propose, 
-                                                                                                                                   "Failure of assertion at line 459, column 45.")
+                                                                                                                                   "Failure of assertion at line 385, column 45.")
                                                                                                                          /\ propose' = propose ++ <<<<c,Phase1(B)>>, [ts |-> t, must |-> must]>>
                                                                                                                   /\ pc' = [pc EXCEPT ![self] = "end1"]
                                                                                                              ELSE /\ Assert(<<c,Phase1(B)>> \notin DOMAIN propose, 
-                                                                                                                            "Failure of assertion at line 354, column 9 of macro called at line 464, column 41.")
+                                                                                                                            "Failure of assertion at line 280, column 9 of macro called at line 390, column 41.")
                                                                                                                   /\ propose' = propose ++ <<<<c,Phase1(B)>>, [ts |-> t]>>
                                                                                                                   /\ pc' = [pc EXCEPT ![self] = "end1"]
                                                                                               ELSE /\ Assert(FALSE, 
-                                                                                                             "Failure of assertion at line 469, column 33.")
+                                                                                                             "Failure of assertion at line 395, column 33.")
                                                                                                    /\ pc' = [pc EXCEPT ![self] = "end1"]
                                                                                                    /\ UNCHANGED propose
                  /\ UNCHANGED << ballot, vote, stable, join >>
@@ -857,7 +773,7 @@ end1(self) == /\ pc[self] = "end1"
                              /\ LET ds == VotedDeps(q, c, b) IN
                                   LET t == RetryTimestamp(c, b, q) IN
                                     /\ Assert(<<c,Phase3((b[1]))>> \notin DOMAIN propose, 
-                                              "Failure of assertion at line 366, column 9 of macro called at line 488, column 29.")
+                                              "Failure of assertion at line 292, column 9 of macro called at line 414, column 29.")
                                     /\ propose' = propose ++ <<<<c,Phase3((b[1]))>>, [ts |-> (t[2]), deps |-> ds]>>
                                     /\ pc' = [pc EXCEPT ![self] = "end3"]
                     /\ UNCHANGED stable
@@ -868,9 +784,9 @@ end1(self) == /\ pc[self] = "end1"
                              /\ LET ds == VotedDeps(q, c, b) IN
                                   LET t == AVote(q, c, b).ts IN
                                     /\ Assert(\A p \in q : vote[p][c][b].ts = t, 
-                                              "Failure of assertion at line 496, column 29.")
+                                              "Failure of assertion at line 422, column 29.")
                                     /\ Assert(<<c,Phase2((b[1]))>> \notin DOMAIN propose, 
-                                              "Failure of assertion at line 360, column 9 of macro called at line 497, column 29.")
+                                              "Failure of assertion at line 286, column 9 of macro called at line 423, column 29.")
                                     /\ propose' = propose ++ <<<<c,Phase2((b[1]))>>, [ts |-> t, deps |-> ds]>>
                                     /\ pc' = [pc EXCEPT ![self] = "end2"]
                     /\ UNCHANGED stable
@@ -885,7 +801,7 @@ end2(self) == /\ pc[self] = "end2"
                                   LET ds == v.deps IN
                                     LET t == v.ts IN
                                       /\ Assert(\A p \in q : vote[p][c][b].ts = t, 
-                                                "Failure of assertion at line 506, column 29.")
+                                                "Failure of assertion at line 432, column 29.")
                                       /\ stable' = stable ++ <<<<c,b>>, [ts |-> t, deps |-> ds]>>
                                       /\ pc' = [pc EXCEPT ![self] = "decided"]
                     /\ UNCHANGED propose
@@ -896,7 +812,7 @@ end2(self) == /\ pc[self] = "end2"
                              /\ LET ds == VotedDeps(q, c, b) IN
                                   LET t == RetryTimestamp(c, b, q) IN
                                     /\ Assert(<<c,Phase3((b[1]))>> \notin DOMAIN propose, 
-                                              "Failure of assertion at line 366, column 9 of macro called at line 515, column 29.")
+                                              "Failure of assertion at line 292, column 9 of macro called at line 441, column 29.")
                                     /\ propose' = propose ++ <<<<c,Phase3((b[1]))>>, [ts |-> (t[2]), deps |-> ds]>>
                                     /\ pc' = [pc EXCEPT ![self] = "end3"]
                     /\ UNCHANGED stable
@@ -910,7 +826,7 @@ end3(self) == /\ pc[self] = "end3"
                        /\ LET ds == VotedDeps(q, c, b) IN
                             LET t == propose[<<c,b>>].ts IN
                               /\ Assert(\A p \in q : vote[p][c][b].ts = t, 
-                                        "Failure of assertion at line 523, column 25.")
+                                        "Failure of assertion at line 449, column 25.")
                               /\ stable' = stable ++ <<<<c,b>>, [ts |-> t, deps |-> ds]>>
                               /\ pc' = [pc EXCEPT ![self] = "decided"]
               /\ UNCHANGED << ballot, vote, propose, join >>
@@ -932,5 +848,5 @@ Spec == Init /\ [][Next]_vars
 \* END TRANSLATION
 =============================================================================
 \* Modification History
-\* Last modified Mon May 02 18:11:39 EDT 2016 by nano
+\* Last modified Mon May 02 21:31:27 EDT 2016 by nano
 \* Created Tue Apr 05 09:07:07 EDT 2016 by nano
